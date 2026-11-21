@@ -745,6 +745,7 @@ int main(void)
     Arg first = { .v = termcmd };
 
     if (ui == NULL) return 1;
+    vui_set_mouse(ui, 1); // clicks, drags and wheel: selection, scrolling, programs that use the mouse
     vui_set_key_release(1); // Alt released = the end of a combo (only the Linux and Windows consoles report it)
     root = &div_create(VUI_DIR_COLUMN)->node;
 
