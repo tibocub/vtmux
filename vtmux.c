@@ -297,10 +297,11 @@ static unsigned long long now_ms(void)
 
 static unsigned long long last_view_ms;
 static int combo_ms = comboms;
-// With key release events (Linux console, Windows console) the combo is exact: tags keep adding while Alt stays held.
-// Elsewhere (terminal windows never report releases) it is the time window above.
-static int exact_alt;         // we have seen a modifier event: the platform reports releases
-static int alt_held_since_view; // Alt has not been released since the last view command
+// dwm's combo patch: pressing a tag key while the previous tag key is still held adds the tag (any key release ends
+// the combo). That needs key releases (Linux console, Windows console). Terminal windows never report them, so there
+// a second tag key within combo_ms counts as held.
+static int exact_keys;   // the platform reports releases (we have seen one, or a modifier event)
+static int combo_armed;  // a tag key was pressed and nothing has been released since
 
 static void setview(unsigned int v)
 {
@@ -317,12 +318,12 @@ static void view(const Arg *a)
     unsigned int v = a->ui & ((1u << NTAGS) - 1); // 0: back to the previous tag
     unsigned long long now = now_ms();
     int single = v != 0 && (v & (v - 1)) == 0;
-    int armed = last_view_ms != 0 && (exact_alt ? alt_held_since_view : now - last_view_ms <= (unsigned long long)combo_ms);
+    int armed = last_view_ms != 0 && (exact_keys ? combo_armed : now - last_view_ms <= (unsigned long long)combo_ms);
 
     if (v == 0) v = prevview;
     else if (single && combo_ms > 0 && armed && (curview & v) == 0) v |= curview;
     last_view_ms = single ? now : 0;
-    alt_held_since_view = 1;
+    combo_armed = single;
     setview(v);
 }
 
@@ -715,6 +716,20 @@ static void reload(const Arg *a)
     retile();
 }
 
+// A click focuses a terminal in the widget tree: make it vtmux's selected one too (frame highlight, key targets)
+static void follow_focus(void)
+{
+    VuiNode *f = vui_focus(vui_ctx());
+
+    for (int i = 0; i < ncl; i++) {
+        if (&cl[i].term->node == f && i != sel && visible(i)) {
+            sel = i;
+            retile();
+            return;
+        }
+    }
+}
+
 static void bar_draw(VuiNode *node, VuiScreen *scr, void *userdata)
 {
     VuiTheme *th = vui_theme();
@@ -765,16 +780,14 @@ int main(void)
         if (e.type == VUI_EVENT_CLOSE) break;
         reap();
         if (e.type == VUI_EVENT_KEY && (e.key.key == VUI_KEY_NONE || e.key.release)) { // bare modifiers and releases: for the combo only
-            if (e.key.key == VUI_KEY_NONE) {
-                exact_alt = 1;
-                if (!(e.key.modifiers & VUI_MOD_ALT)) alt_held_since_view = 0;
-            }
-            if (e.key.release && (e.key.modifiers & VUI_MOD_ALT) == 0) alt_held_since_view = 0;
+            exact_keys = 1;
+            if (e.key.release) combo_armed = 0; // dwm's keyrelease: any key going up ends the combo
             continue;
         }
         if (e.type == VUI_EVENT_KEY) msg[0] = '\0';
         if (e.type == VUI_EVENT_KEY && command(&e.key)) continue;
         vui_dispatch(ui, root, &e);
+        if (e.type == VUI_EVENT_MOUSE && e.mouse.action == VUI_MOUSE_PRESS) follow_focus();
     }
 
     vui_shutdown(ui);

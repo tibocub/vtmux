@@ -38,7 +38,7 @@ smaller terminals and one libvterm (see vaporUI docs/small-targets.md).
 
 ## TODO
 - [x] alt-m monocle mode (full screen terminals, rotate with alt-j/alt-k)
-- [x] combo: Alt+1 then Alt+2 within 300 ms (`set combo <ms>`, 0 = off) views tags 1 and 2 together. On the Linux console and Windows console (which report key releases) it is exact: tags keep adding while Alt stays held. In a terminal window, which can't see Alt released, it is the time window; `toggleview` (Alt+Ctrl+number) is the exact way
+- [x] combo: like dwm's patch, press a tag key while the previous tag key is still held (Alt+1, then 2 with 1 still down) to view both; any key release ends it (Linux and Windows consoles report releases). Terminal windows can't see releases, so there a second tag key within 300 ms (`set combo <ms>`, 0 = off) counts as held. `toggleview` (Alt+Ctrl+number) is the other way
 - [x] pertag: each tag keeps its own arrangement (tile or monocle), master size and master count (a view of several tags shares one more set). Not done: a grid arrangement
 - [x] rotatestack: Alt+Shift+j/k (the master area stays, the focused terminal moves with the stack)
 - [ ] simple dmenu-like utility, simply opens a new terminal with the selected program with alt-p or runs scripts/processes in the background with alt-P
