@@ -1104,6 +1104,7 @@ static void launch(const Arg *a)
     lq_orig_event = lq->node.on_event;
     lq->node.on_event = launcher_input_event;
     ll = list_create(0, launcher_item);
+    ll->node.basis = 0; // fill what is left: the list's own size is its row count, which overran the border
     ll->node.grow = 1;
     ll->on_select = launcher_pick;
     node_add(&b->node, &lq->node);
