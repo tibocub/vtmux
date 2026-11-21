@@ -778,34 +778,39 @@ typedef struct { unsigned int x0, x1; int client; } Tab;
 static Tab tabs[MAXC];
 static int ntabs;
 
+typedef struct { unsigned int x0, x1; } TagCell;
+static TagCell tagcells[9];
+
 static void bar_draw(VuiNode *node, VuiScreen *scr, void *userdata)
 {
-    VuiTheme *th = vui_theme();
+    // dwm's look: dark bar, light text; the focused tag(s) and terminal get a coloured background
+    VuiStyle norm = { .fg = barfg, .bg = barbg }, hi = { .fg = selfg, .bg = selbg };
     unsigned int occupied = 0, x = node->rect.x, end = node->rect.x + node->rect.width;
     char s[16];
     int n = count_visible();
 
     (void)userdata;
-    scr_fill(scr, node->rect, ' ', th->bar);
+    scr_fill(scr, node->rect, ' ', norm);
     for (int i = 0; i < ncl; i++) occupied |= cl[i].tags;
 
     for (int i = 0; i < NTAGS; i++) {
-        VuiStyle st = (curview & (1u << i)) ? th->focus : th->bar;
+        VuiStyle st = (curview & (1u << i)) ? hi : norm;
 
         snprintf(s, sizeof(s), " %s%c", tags[i], (occupied & (1u << i)) ? '.' : ' ');
         scr_puts(scr, x, node->rect.y, s, st);
+        tagcells[i] = (TagCell){ x, x + vui_strn_width(s, strlen(s)) };
         x += vui_strn_width(s, strlen(s));
     }
 
     if (PT.arrange == ARRANGE_MONOCLE) snprintf(s, sizeof(s), " [M%d]", count_visible());
     else snprintf(s, sizeof(s), " [%d]", PT.nmaster);
-    scr_puts(scr, x + 1, node->rect.y, s, th->bar);
+    scr_puts(scr, x + 1, node->rect.y, s, norm);
     x += 1 + vui_strn_width(s, strlen(s)) + 1;
 
     if (msg[0] != '\0') { // a message takes the right end, over the tabs
         unsigned int w = vui_strn_width(msg, strlen(msg));
 
-        if (end > x + w) scr_puts(scr, end - w, node->rect.y, msg, th->bar);
+        if (end > x + w) scr_puts(scr, end - w, node->rect.y, msg, norm);
         end = end > x + w + 1 ? end - w - 1 : x;
     }
 
@@ -813,7 +818,7 @@ static void bar_draw(VuiNode *node, VuiScreen *scr, void *userdata)
     for (int k = 0, i; k < n && end > x && (i = nth(k)) >= 0; k++) {
         unsigned int room = (end - x) / (unsigned int)(n - k), want = vui_strn_width(cl[i].title, strlen(cl[i].title)) + 2, w = want < room ? want : room;
         char cell[64];
-        VuiStyle st = i == sel ? th->focus : th->bar;
+        VuiStyle st = i == sel ? hi : norm;
 
         if (w < 4) break;
         scr_fill(scr, (VuiRect){ x, node->rect.y, w, 1 }, ' ', st);
@@ -828,7 +833,27 @@ static int bar_event(VuiNode *node, VuiCtx *ui, const VuiEvent *e)
 {
     (void)node;
     (void)ui;
-    if (e->type != VUI_EVENT_MOUSE || e->mouse.action != VUI_MOUSE_PRESS || e->mouse.button != VUI_MOUSE_LEFT) return 0;
+    if (e->type != VUI_EVENT_MOUSE || e->mouse.action != VUI_MOUSE_PRESS) return 0;
+
+    // dwm's tag clicks: left views the tag, right adds / removes it from the view; with Alt held: move the
+    // focused terminal to the tag (left) or add / remove the tag on it (right)
+    for (int i = 0; i < NTAGS; i++) {
+        if (e->mouse.x >= tagcells[i].x0 && e->mouse.x < tagcells[i].x1 && (e->mouse.button == VUI_MOUSE_LEFT || e->mouse.button == VUI_MOUSE_RIGHT)) {
+            Arg a = { .ui = 1u << i };
+            int left = e->mouse.button == VUI_MOUSE_LEFT;
+
+            if (e->mouse.modifiers & VUI_MOD_ALT) {
+                if (left) tag(&a);
+                else toggletag(&a);
+            } else if (left) {
+                setview(a.ui); // not view(): two quick clicks are not a combo
+            } else {
+                toggleview(&a);
+            }
+            return 1;
+        }
+    }
+    if (e->mouse.button != VUI_MOUSE_LEFT) return 0;
 
     for (int i = 0; i < ntabs; i++) {
         if (e->mouse.x >= tabs[i].x0 && e->mouse.x < tabs[i].x1 && tabs[i].client < ncl) {

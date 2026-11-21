@@ -9,6 +9,10 @@ Alt is the Mod key: Alt+c new, Alt+Shift+c close, Alt+j/k focus, Alt+h/l resize,
 Alt+Shift+j/k rotate the stack, Alt+p launcher (run a program in a new terminal), Alt+Shift+p launcher (run it in the background), Alt+m monocle on/off, Alt+Ctrl+<number row> toggle a tag in the view (+Shift: on the terminal), Alt+Enter zoom, Alt+Tab previous tag, Alt+<number row> view tag, Alt+Shift+<number row> move to tag,
 Alt+F1..F9 / Alt+Shift+F1..F9 the same on any layout, Alt+Shift+r reload the config, Alt+Shift+q quit.
 
+The bar is dwm's: dark with light text, a coloured background on the focused tag(s) and terminal (colours in
+`config.h`). Tags and terminal tabs are clickable: left click views a tag, right click adds / removes it from the view,
+Alt+left moves the focused terminal to it, Alt+right adds / removes the tag on that terminal; a click on a tab focuses it.
+
 ## Configuration
 Defaults are compile-time, like dwm: `make` copies `config.def.h` to `config.h` (yours, never overwritten); edit it
 and rebuild. It lists every key, the tags, the master size and the terminal command. On top of that, `~/.config/vtmux.conf` is read at
