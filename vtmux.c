@@ -297,6 +297,10 @@ static unsigned long long now_ms(void)
 
 static unsigned long long last_view_ms;
 static int combo_ms = comboms;
+// With key release events (Linux console, Windows console) the combo is exact: tags keep adding while Alt stays held.
+// Elsewhere (terminal windows never report releases) it is the time window above.
+static int exact_alt;         // we have seen a modifier event: the platform reports releases
+static int alt_held_since_view; // Alt has not been released since the last view command
 
 static void setview(unsigned int v)
 {
@@ -313,10 +317,12 @@ static void view(const Arg *a)
     unsigned int v = a->ui & ((1u << NTAGS) - 1); // 0: back to the previous tag
     unsigned long long now = now_ms();
     int single = v != 0 && (v & (v - 1)) == 0;
+    int armed = last_view_ms != 0 && (exact_alt ? alt_held_since_view : now - last_view_ms <= (unsigned long long)combo_ms);
 
     if (v == 0) v = prevview;
-    else if (single && combo_ms > 0 && now - last_view_ms <= (unsigned long long)combo_ms && (curview & v) == 0) v |= curview;
+    else if (single && combo_ms > 0 && armed && (curview & v) == 0) v |= curview;
     last_view_ms = single ? now : 0;
+    alt_held_since_view = 1;
     setview(v);
 }
 
@@ -406,10 +412,14 @@ static void quit(const Arg *a)
 // Returns 1 if the key was a vtmux command
 static int command(const VuiKeyEvent *k)
 {
+    int repeatable;
+
     for (int i = 0; i < nbinds; i++) {
         const Key *b = &binds[i].k;
 
+        repeatable = b->func == focusstack || b->func == rotatestack || b->func == setmfact || b->func == incnmaster;
         if (key_matches(b, k)) {
+            if (k->repeat && !repeatable) return 1; // a held key must not spawn sixteen terminals
             b->func(&b->arg);
             return 1;
         }
@@ -735,6 +745,7 @@ int main(void)
     Arg first = { .v = termcmd };
 
     if (ui == NULL) return 1;
+    vui_set_key_release(1); // Alt released = the end of a combo (only the Linux and Windows consoles report it)
     root = &div_create(VUI_DIR_COLUMN)->node;
 
     screen = &div_create(VUI_DIR_ROW)->node;
@@ -752,6 +763,14 @@ int main(void)
 
         if (e.type == VUI_EVENT_CLOSE) break;
         reap();
+        if (e.type == VUI_EVENT_KEY && (e.key.key == VUI_KEY_NONE || e.key.release)) { // bare modifiers and releases: for the combo only
+            if (e.key.key == VUI_KEY_NONE) {
+                exact_alt = 1;
+                if (!(e.key.modifiers & VUI_MOD_ALT)) alt_held_since_view = 0;
+            }
+            if (e.key.release && (e.key.modifiers & VUI_MOD_ALT) == 0) alt_held_since_view = 0;
+            continue;
+        }
         if (e.type == VUI_EVENT_KEY) msg[0] = '\0';
         if (e.type == VUI_EVENT_KEY && command(&e.key)) continue;
         vui_dispatch(ui, root, &e);
