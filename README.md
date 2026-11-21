@@ -1,6 +1,6 @@
 # vtmux
 Vapor terminal multiplexer: a dwm-style tiling multiplexer (tags, master/stack layout) built on
-[vaporUI](../vaporUI)'s terminal widget. Meant for Linux, Windows and vaporOS.
+[vaporUI](../vaporUI)'s terminal widget. Linux today; Windows and vaporOS are the goal.
 
     make                      # needs ../vaporUI, or make VAPORUI=/path/to/vaporUI
     ./vtmux
@@ -29,8 +29,10 @@ that can't say which physical key was pressed (anything but kitty, foot, WezTerm
 told your layout (vaporUI also asks the OS: GNOME/X settings, vconsole.conf, Windows): `layout = "fr"` in `config.h` or `VUI_LAYOUT=fr ./vtmux`. Layouts live in vaporUI
 (`src/input.c`): add yours there. Letters are bound by what they type (`CH('q')`, like dwm's `XK_q`).
 
-Status: Linux only. Windows needs a ConPTY backend in vaporUI's terminal widget; vaporOS needs smaller
-terminals and one libvterm (see vaporUI docs/small-targets.md).
+Status: Linux (desktop terminals and the console). vaporUI's Windows backend now handles keys, mouse and output
+natively (see its docs/input.md), but the terminal widget that runs the shells is POSIX-only (forkpty), so vtmux
+does not build on Windows yet: that needs a ConPTY back end in the widget (`CreatePseudoConsole`). vaporOS needs
+smaller terminals and one libvterm (see vaporUI docs/small-targets.md).
 
 ## TODO
 - [ ] alt-m monocle mode (full screen terminals, rotate with alt-j/alt-k)
@@ -40,3 +42,4 @@ terminals and one libvterm (see vaporUI docs/small-targets.md).
 - [ ] simple dmenu-like utility, simply opens a new terminal with the selected program with alt-p or runs scripts/processes in the background with alt-P
 - [x] config file `~/.config/vtmux.conf` with reload (Alt+Shift+r). Not done: `~/.vtmux.conf` as a second location, quoting in `spawn`, setting the focus colour or tag names from the file
 - [ ] display names of the terminals in the current focused tag(s) in the status bar as tabs
+- [ ] Make vtmux's virtual terminal configurable as well (set keys to scroll, i.e. shift-pg_up/shift-pg_down, etc.)
