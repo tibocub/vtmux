@@ -6,7 +6,7 @@ Vapor terminal multiplexer: a dwm-style tiling multiplexer (tags, master/stack l
     ./vtmux
 
 Alt is the Mod key: Alt+c new, Alt+Shift+c close, Alt+j/k focus, Alt+h/l resize, Alt+i/d master count,
-Alt+Shift+j/k rotate the stack, Alt+p launcher (run a program in a new terminal), Alt+Shift+p launcher (run it in the background), Alt+m monocle on/off, Alt+Ctrl+<number row> toggle a tag in the view (+Shift: on the terminal), Alt+Enter zoom, Alt+Tab previous tag, Alt+<number row> view tag, Alt+Shift+<number row> move to tag,
+Alt+Shift+j/k rotate all terminals in view (master included), Alt+p launcher (run a program in a new terminal), Alt+Shift+p launcher (run it in the background), Alt+m monocle on/off, Alt+Ctrl+<number row> toggle a tag in the view (+Shift: on the terminal), Alt+Enter zoom, Alt+Tab previous tag, Alt+<number row> view tag, Alt+Shift+<number row> move to tag,
 Alt+F1..F9 / Alt+Shift+F1..F9 the same on any layout, Alt+Shift+r reload the config, Alt+Shift+q quit.
 
 The bar is dwm's: dark with light text, a coloured background on the focused tag(s) and terminal (colours in
@@ -44,7 +44,7 @@ smaller terminals and one libvterm (see vaporUI docs/small-targets.md).
 - [x] alt-m monocle mode (full screen terminals, rotate with alt-j/alt-k)
 - [x] combo: like dwm's patch, press a tag key while the previous tag key is still held (Alt+1, then 2 with 1 still down) to view both; any key release ends it (Linux and Windows consoles report releases). Terminal windows can't see releases, so there a second tag key within 300 ms (`set combo <ms>`, 0 = off) counts as held. `toggleview` (Alt+Ctrl+number) is the other way
 - [x] pertag: each tag keeps its own arrangement (tile or monocle), master size and master count (a view of several tags shares one more set). Not done: a grid arrangement
-- [x] rotatestack: Alt+Shift+j/k (the master area stays, the focused terminal moves with the stack)
+- [x] rotatestack: Alt+Shift+j/k cycles every terminal in view, master and stack, one place; the focused terminal moves with its place
 - [x] launcher (Alt+p / Alt+Shift+p): type to narrow the programs on $PATH (prefix matches first, then substring), Up/Down, Enter runs it in a new terminal or, with Alt+Shift+p, detached in the background; text with a space is run as typed (`sh -c`). Not done: fuzzy matching, scripts outside $PATH, history
 - [x] config file `~/.config/vtmux.conf` with reload (Alt+Shift+r). Not done: `~/.vtmux.conf` as a second location, quoting in `spawn`, setting the focus colour or tag names from the file
 - [x] terminals in view are tabs in the bar ("<number> - <name>", the name is the program in the terminal's foreground, read from /proc on Linux); click one to focus it. The same title is on the frame. Not done: names from the terminal's own title (OSC 0/2), which the widget doesn't expose yet

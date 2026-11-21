@@ -409,11 +409,11 @@ static void incnmaster(const Arg *a)
     retile();
 }
 
-// dwm's rotatestack: the terminals after the master area move one place (+1 down, the last wraps to the top of the
-// stack, -1 up); the focused terminal moves with it.
+// dwm's rotatestack: every terminal in view, master area included, moves one place (+1: the last becomes the first,
+// -1: the first becomes the last); the focused terminal moves with its place.
 static void rotatestack(const Arg *a)
 {
-    int idx[MAXC], n = 0, first = PT.arrange == ARRANGE_MONOCLE ? 0 : PT.nmaster;
+    int idx[MAXC], n = 0, first = 0;
     Client keep;
     VuiTerminal *focus = sel >= 0 ? cl[sel].term : NULL;
 
