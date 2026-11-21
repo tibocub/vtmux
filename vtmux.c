@@ -29,6 +29,7 @@ typedef struct {
     VuiModifiers mods;
     VuiKey key;
     VuiCodepoint ch; // for VUI_KEY_CHAR
+    int physical;    // ch is the key's US-layout position (base), not the typed character
     void (*func)(const Arg *);
     Arg arg;
 } Key;
@@ -259,7 +260,7 @@ static void quit(const Arg *a)
 static int command(const VuiKeyEvent *k)
 {
     for (unsigned int i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
-        if (keys[i].key == k->key && keys[i].mods == k->modifiers && (k->key != VUI_KEY_CHAR || keys[i].ch == k->character)) {
+        if (keys[i].key == k->key && keys[i].mods == k->modifiers && (k->key != VUI_KEY_CHAR || keys[i].ch == (keys[i].physical ? k->base : k->character))) {
             keys[i].func(&keys[i].arg);
             return 1;
         }
@@ -296,6 +297,7 @@ int main(void)
     Arg first = { .v = termcmd };
 
     if (ui == NULL) return 1;
+    vui_set_layout(layout);
 
     screen = &div_create(VUI_DIR_ROW)->node;
     screen->grow = 1;
