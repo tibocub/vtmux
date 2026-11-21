@@ -11,3 +11,8 @@ bind Alt+x spawn htop
 bind Alt+Shift+Enter spawn
 unbind Alt+Tab
 bind Alt+Escape view prev
+
+# keys of the focused terminal (defaults: Shift+PageUp/PageDown scroll, Shift+Home/End top/live, Ctrl+Shift+C/V copy/paste)
+# tbind Shift+Up lineup
+# tbind Shift+Down linedown
+# tbind Ctrl+Shift+x none

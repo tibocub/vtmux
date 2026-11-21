@@ -22,7 +22,7 @@ start and again by Alt+Shift+r, no rebuild: see `vtmux.conf.example`.
 Chords are `Mod+key` (Alt, Shift, Ctrl). A letter is the key that types it on your layout, a digit is the key in that
 position of the number row, so `Alt+1` is the same key on AZERTY. Actions: `spawn [cmd...]` (no quoting, 8 words
 max), `kill`, `focus +1|-1`, `nmaster +1|-1`, `mfact +0.05|-0.05`, `arrange tile|monocle|toggle`, `rotatestack +1|-1`, `toggleview N`, `toggletag N`, `zoom`, `view N|prev|all`, `tag N|all`,
-`reload`, `quit`. A bad line is skipped and reported in the bar. `$VTMUX_CONF` points at another file.
+`reload`, `quit`. `tbind <chord> pageup|pagedown|lineup|linedown|top|bottom|copy|paste|none` sets keys of the focused terminal (scroll, copy, paste); unlisted keys keep the defaults: Shift+PageUp/Down, Shift+Home/End, Ctrl+Shift+C/V, mouse wheel, drag to select (Shift+drag when the program uses the mouse); `none` swallows a key. A bad line is skipped and reported in the bar. `$VTMUX_CONF` points at another file.
 Note: `config.h` is copied from `config.def.h` once; delete it after updating to get new default keys (the reload key).
 
 ## Keyboard layouts
@@ -44,5 +44,5 @@ smaller terminals and one libvterm (see vaporUI docs/small-targets.md).
 - [ ] simple dmenu-like utility, simply opens a new terminal with the selected program with alt-p or runs scripts/processes in the background with alt-P
 - [x] config file `~/.config/vtmux.conf` with reload (Alt+Shift+r). Not done: `~/.vtmux.conf` as a second location, quoting in `spawn`, setting the focus colour or tag names from the file
 - [ ] display names of the terminals in the current focused tag(s) in the status bar as tabs
-- [ ] Make vtmux's virtual terminal configurable as well (set keys to scroll, i.e. shift-pg_up/shift-pg_down, etc.)
-- [ ] Make proper mouse selection in the virtual terminal so it's possible to select text to copy (with classic terminal controls ctrl-shift-c/ctrl-shift-v)
+- [x] scroll / copy / paste keys of the terminal are configurable (`tbind`)
+- [x] mouse selection with Ctrl+Shift+C / Ctrl+Shift+V (vaporUI's terminal widget). Not done: double/triple click, reading the system clipboard (paste uses vaporUI's in-process clipboard; the host terminal's own paste works)

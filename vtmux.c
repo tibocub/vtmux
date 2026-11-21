@@ -88,6 +88,12 @@ typedef struct {
 
 static Bind binds[MAXBIND];
 static int nbinds;
+// Keys for the focused terminal itself (scrolling, copy, paste), set with `tbind`. Anything not listed keeps the
+// widget's defaults (Shift+PageUp/Down, Shift+Home/End, Ctrl+Shift+C/V); `tbind <chord> none` swallows a key.
+enum { T_NONE, T_PAGEUP, T_PAGEDOWN, T_LINEUP, T_LINEDOWN, T_TOP, T_BOTTOM, T_COPY, T_PASTE };
+typedef struct { Key k; int action; } TermBind;
+static TermBind tbinds[32];
+static int ntbinds;
 static char msg[96]; // shown in the bar until the next key
 static const char *const *term_argv = termcmd;
 static int top = topbar;
@@ -101,6 +107,33 @@ static int ptidx(void)
 }
 
 #define PT (pertag[ptidx()])
+
+static int key_matches(const Key *b, const VuiKeyEvent *k)
+{
+    return b->key == k->key && b->mods == k->modifiers && (k->key != VUI_KEY_CHAR || b->ch == (b->physical ? k->base : k->character));
+}
+
+// The terminal widget asks before it handles a key: 1 = ours
+static int term_key(VuiTerminal *t, const VuiKeyEvent *k)
+{
+    for (int i = 0; i < ntbinds; i++) {
+        if (!key_matches(&tbinds[i].k, k)) continue;
+
+        switch (tbinds[i].action) {
+        case T_PAGEUP:   terminal_scroll(t, (int)t->rows - 1); break;
+        case T_PAGEDOWN: terminal_scroll(t, -((int)t->rows - 1)); break;
+        case T_LINEUP:   terminal_scroll(t, 1); break;
+        case T_LINEDOWN: terminal_scroll(t, -1); break;
+        case T_TOP:      terminal_scroll(t, 1 << 30); break;
+        case T_BOTTOM:   terminal_scroll_reset(t); break;
+        case T_COPY:     terminal_copy(t); break;
+        case T_PASTE:    terminal_paste(t); break;
+        default:         break;
+        }
+        return 1;
+    }
+    return 0;
+}
 
 static int visible(int i) { return cl[i].tags & curview; }
 
@@ -208,6 +241,7 @@ static void spawn(const Arg *a)
 
     b = border_create(NULL);
     t->on_exit = on_exit_cb;
+    t->on_key = term_key;
     b->node.direction = VUI_DIR_COLUMN;
     node_add(&b->node, &t->node);
 
@@ -375,7 +409,7 @@ static int command(const VuiKeyEvent *k)
     for (int i = 0; i < nbinds; i++) {
         const Key *b = &binds[i].k;
 
-        if (b->key == k->key && b->mods == k->modifiers && (k->key != VUI_KEY_CHAR || b->ch == (b->physical ? k->base : k->character))) {
+        if (key_matches(b, k)) {
             b->func(&b->arg);
             return 1;
         }
@@ -386,6 +420,7 @@ static int command(const VuiKeyEvent *k)
 // ---- ~/.config/vtmux.conf ----------------------------------------------------------------------------------------
 //   # comment
 //   set mfact 0.6            set nmaster 2        set topbar 0        set layout fr        set term /bin/zsh
+//   tbind Shift+PageUp pageup   tbind Ctrl+Shift+c copy   tbind Shift+Insert paste   (keys of the focused terminal)
 //   bind Alt+Shift+c kill    bind Alt+x spawn htop    bind Alt+9 view 9    unbind Alt+Enter
 // Chords are Mod+key, Mod = Alt, Shift, Ctrl in any order, key = a character, Enter Tab Escape Space Backspace Up Down
 // Left Right Home End PageUp PageDown Insert Delete F1..F12. A letter is the key that types it on your layout; a digit
@@ -545,6 +580,25 @@ static const char *conf_line(char *line)
         return NULL;
     }
 
+    if (same_word(word[0], "tbind")) {
+        static const char *const names[] = { "none", "pageup", "pagedown", "lineup", "linedown", "top", "bottom", "copy", "paste" };
+        TermBind b = { { 0 }, -1 };
+
+        if (n < 3) return "tbind needs a key and an action";
+        if (parse_chord(word[1], &b.k) != 0) return "unknown key";
+        for (int i = 0; i < 9; i++) {
+            if (same_word(word[2], names[i])) b.action = i;
+        }
+        if (b.action < 0) return "tbind action: none pageup pagedown lineup linedown top bottom copy paste";
+
+        for (int i = 0; i < ntbinds; i++) {
+            if (tbinds[i].k.mods == b.k.mods && tbinds[i].k.key == b.k.key && tbinds[i].k.ch == b.k.ch) { tbinds[i] = b; return NULL; }
+        }
+        if (ntbinds == 32) return "too many tbind lines";
+        tbinds[ntbinds++] = b;
+        return NULL;
+    }
+
     if (same_word(word[0], "unbind") || same_word(word[0], "bind")) {
         Bind b = { 0 };
         int bind = same_word(word[0], "bind");
@@ -613,6 +667,7 @@ static void load_config(int announce)
     int lineno = 0, bad = 0;
 
     nbinds = 0;
+    ntbinds = 0;
     for (unsigned int i = 0; i < sizeof(keys) / sizeof(keys[0]) && nbinds < MAXBIND; i++) binds[nbinds++].k = keys[i];
     for (int i = 0; i <= NTAGS; i++) pertag[i] = (Pertag){ ARRANGE_TILE, mfact, nmaster };
     top = topbar;

@@ -6,7 +6,7 @@ CC      ?= gcc
 CFLAGS  ?= -Wall -O2
 V       := $(VAPORUI)
 
-SRCS := $(wildcard $(V)/src/*.c $(V)/src/widgets/*.c) $(V)/src/platform/posix.c $(V)/src/ext/terminal.c \
+SRCS := $(wildcard $(V)/src/*.c $(V)/src/widgets/*.c) $(V)/src/platform/posix.c $(V)/src/ext/terminal.c $(V)/src/ext/termsel.c \
         $(wildcard $(V)/third_party/libvterm/src/*.c)
 
 vtmux: vtmux.c config.h $(SRCS)
