@@ -5,14 +5,13 @@ Vapor terminal multiplexer: a dwm-style tiling multiplexer (tags, master/stack l
     make                      # needs ../vaporUI, or make VAPORUI=/path/to/vaporUI
     ./vtmux
 
-Configuration is compile-time, like dwm: `make` copies `config.def.h` to `config.h` (yours, never overwritten);
-edit it and rebuild. It lists every key, the tags, the master size and the terminal command.
 Alt is the Mod key: Alt+c new, Alt+Shift+c close, Alt+j/k focus, Alt+h/l resize, Alt+i/d master count,
 Alt+Enter zoom, Alt+Tab previous tag, Alt+<number row> view tag, Alt+Shift+<number row> move to tag,
-Alt+F1..F9 / Alt+Shift+F1..F9 the same on any layout, Alt+Shift+q quit.
+Alt+F1..F9 / Alt+Shift+F1..F9 the same on any layout, Alt+Shift+r reload the config, Alt+Shift+q quit.
 
 ## Configuration
-Defaults are in `config.h` (dwm style, rebuild after editing). On top of that, `~/.config/vtmux.conf` is read at
+Defaults are compile-time, like dwm: `make` copies `config.def.h` to `config.h` (yours, never overwritten); edit it
+and rebuild. It lists every key, the tags, the master size and the terminal command. On top of that, `~/.config/vtmux.conf` is read at
 start and again by Alt+Shift+r, no rebuild: see `vtmux.conf.example`.
 
     set mfact 0.6          set nmaster 2        set topbar 0        set layout fr        set term /bin/zsh
@@ -39,5 +38,5 @@ terminals and one libvterm (see vaporUI docs/small-targets.md).
 - [ ] pertag (like the dwm patch, keep some info such as display mode for each tag, so tag 1 can be a grid and tag 2 a monocle)
 - [ ] rotatestack (like the dwm patch, rotate the whole stack with alt-J/alt-K)
 - [ ] simple dmenu-like utility, simply opens a new terminal with the selected program with alt-p or runs scripts/processes in the background with alt-P
-- [ ] make a simple config system to load user config from ~/.config/vtmux.conf or ~/.vtmux.conf to allow dynamic configuartion editing and reloading
+- [x] config file `~/.config/vtmux.conf` with reload (Alt+Shift+r). Not done: `~/.vtmux.conf` as a second location, quoting in `spawn`, setting the focus colour or tag names from the file
 - [ ] display names of the terminals in the current focused tag(s) in the status bar as tabs
