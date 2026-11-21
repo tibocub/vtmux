@@ -55,6 +55,8 @@ static const Key keys[] = {
 	FNKEYS(1) FNKEYS(2) FNKEYS(3) FNKEYS(4) FNKEYS(5) FNKEYS(6) FNKEYS(7) FNKEYS(8) FNKEYS(9)
 	{ MODKEY | SHIFT,   CH('j'),             rotatestack, { .i = +1 } },
 	{ MODKEY | SHIFT,   CH('k'),             rotatestack, { .i = -1 } },
+	{ MODKEY,           CH('p'),             launch,     { .i = 0 } }, /* run a program in a new terminal */
+	{ MODKEY | SHIFT,   CH('p'),             launch,     { .i = 1 } }, /* run it in the background */
 	{ MODKEY,           CH('m'),             arrange,    { .i = -1 } }, /* monocle on/off */
 	{ MODKEY | SHIFT,   CH('r'),             reload,     { 0 } }, /* re-read ~/.config/vtmux.conf */
 	{ MODKEY | SHIFT,   CH('q'),             quit,       { 0 } },

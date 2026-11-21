@@ -10,6 +10,11 @@
 //   - resizing the window re-tiles; the quit key quits
 
 #include <ctype.h>
+#include <dirent.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,6 +52,7 @@ static void view(const Arg *a);
 static void tag(const Arg *a);
 static void quit(const Arg *a);
 static void arrange(const Arg *a);
+static void launch(const Arg *a);
 static void rotatestack(const Arg *a);
 static void toggleview(const Arg *a);
 static void toggletag(const Arg *a);
@@ -61,7 +67,9 @@ _Static_assert(NTAGS <= 9, "vtmux supports at most 9 tags");
 typedef struct {
     VuiTerminal *term;
     VuiBorder *frame;
-    char title[8];
+    char title[56];    // "<number> - <name>": the frame's title and the bar tab
+    char fallback[24]; // the name while the foreground process can't be read
+    unsigned int num;
     unsigned int tags; // bit n = on tag n+1
     int dead;          // its program exited: removed at the next loop turn
 } Client;
@@ -152,6 +160,33 @@ static int count_visible(void)
 
     for (int i = 0; i < ncl; i++) n += visible(i) ? 1 : 0;
     return n;
+}
+
+// "<number> - <name>": the name is the program in the terminal's foreground right now (vim, htop, bash), read from
+// /proc on Linux, else the command the terminal was started with.
+// shortcut: Linux only for the live name; a name change shows at the next redraw, not by itself.
+static void refresh_names(void)
+{
+    for (int i = 0; i < ncl; i++) {
+        char name[24] = "";
+
+#ifdef __linux__
+        pid_t pg = tcgetpgrp(cl[i].term->fd);
+
+        if (pg > 0) {
+            char path[40];
+            FILE *f;
+
+            snprintf(path, sizeof(path), "/proc/%d/comm", (int)pg);
+            f = fopen(path, "r");
+            if (f != NULL) {
+                if (fgets(name, sizeof(name), f) != NULL) name[strcspn(name, "\n")] = '\0';
+                fclose(f);
+            }
+        }
+#endif
+        snprintf(cl[i].title, sizeof(cl[i].title), "%u - %s", cl[i].num, name[0] != '\0' ? name : cl[i].fallback);
+    }
 }
 
 // Rebuild the visible tree from the clients: master column | stack column. Hidden terminals keep running.
@@ -245,8 +280,14 @@ static void spawn(const Arg *a)
     b->node.direction = VUI_DIR_COLUMN;
     node_add(&b->node, &t->node);
 
-    cl[ncl] = (Client){ .term = t, .frame = b, .tags = curview };
-    snprintf(cl[ncl].title, sizeof(cl[ncl].title), "%u", ++serial);
+    cl[ncl] = (Client){ .term = t, .frame = b, .tags = curview, .num = ++serial };
+    {
+        const char *cmd = argv != NULL && argv[0] != NULL ? argv[0] : getenv("SHELL");
+        const char *slash = cmd != NULL ? strrchr(cmd, '/') : NULL;
+
+        snprintf(cl[ncl].fallback, sizeof(cl[ncl].fallback), "%s", slash != NULL ? slash + 1 : cmd != NULL ? cmd : "sh");
+    }
+    snprintf(cl[ncl].title, sizeof(cl[ncl].title), "%u - %s", cl[ncl].num, cl[ncl].fallback);
     b->title = cl[ncl].title;
     sel = ncl++;
     retile();
@@ -441,7 +482,7 @@ static int command(const VuiKeyEvent *k)
 
 static const struct { const char *name; void (*func)(const Arg *); } actions[] = {
     { "spawn", spawn }, { "kill", killclient }, { "focus", focusstack }, { "nmaster", incnmaster },
-    { "mfact", setmfact }, { "zoom", zoom }, { "view", view }, { "tag", tag }, { "reload", reload }, { "quit", quit }, { "arrange", arrange }, { "rotatestack", rotatestack }, { "toggleview", toggleview }, { "toggletag", toggletag },
+    { "mfact", setmfact }, { "zoom", zoom }, { "view", view }, { "tag", tag }, { "reload", reload }, { "quit", quit }, { "arrange", arrange }, { "launch", launch }, { "rotatestack", rotatestack }, { "toggleview", toggleview }, { "toggletag", toggletag },
 };
 
 static const struct { const char *name; VuiKey key; } named_keys[] = {
@@ -643,6 +684,8 @@ static const char *conf_line(char *line)
         } else if (b.k.func == setmfact) {
             if (n < 4) return "needs +0.05 or -0.05";
             b.k.arg.f = (float)atof(word[3]);
+        } else if (b.k.func == launch) {
+            b.k.arg.i = n >= 4 && same_word(word[3], "bg");
         } else if (b.k.func == arrange) {
             if (n < 4) return "needs tile, monocle or toggle";
             b.k.arg.i = same_word(word[3], "tile") ? ARRANGE_TILE : same_word(word[3], "monocle") ? ARRANGE_MONOCLE
@@ -730,11 +773,17 @@ static void follow_focus(void)
     }
 }
 
+// Tabs: one per terminal in view, clickable
+typedef struct { unsigned int x0, x1; int client; } Tab;
+static Tab tabs[MAXC];
+static int ntabs;
+
 static void bar_draw(VuiNode *node, VuiScreen *scr, void *userdata)
 {
     VuiTheme *th = vui_theme();
-    unsigned int occupied = 0, x = node->rect.x;
+    unsigned int occupied = 0, x = node->rect.x, end = node->rect.x + node->rect.width;
     char s[16];
+    int n = count_visible();
 
     (void)userdata;
     scr_fill(scr, node->rect, ' ', th->bar);
@@ -751,7 +800,242 @@ static void bar_draw(VuiNode *node, VuiScreen *scr, void *userdata)
     if (PT.arrange == ARRANGE_MONOCLE) snprintf(s, sizeof(s), " [M%d]", count_visible());
     else snprintf(s, sizeof(s), " [%d]", PT.nmaster);
     scr_puts(scr, x + 1, node->rect.y, s, th->bar);
-    if (msg[0] != '\0') scr_puts(scr, x + 1 + vui_strn_width(s, strlen(s)) + 1, node->rect.y, msg, th->bar);
+    x += 1 + vui_strn_width(s, strlen(s)) + 1;
+
+    if (msg[0] != '\0') { // a message takes the right end, over the tabs
+        unsigned int w = vui_strn_width(msg, strlen(msg));
+
+        if (end > x + w) scr_puts(scr, end - w, node->rect.y, msg, th->bar);
+        end = end > x + w + 1 ? end - w - 1 : x;
+    }
+
+    ntabs = 0;
+    for (int k = 0, i; k < n && end > x && (i = nth(k)) >= 0; k++) {
+        unsigned int room = (end - x) / (unsigned int)(n - k), want = vui_strn_width(cl[i].title, strlen(cl[i].title)) + 2, w = want < room ? want : room;
+        char cell[64];
+        VuiStyle st = i == sel ? th->focus : th->bar;
+
+        if (w < 4) break;
+        scr_fill(scr, (VuiRect){ x, node->rect.y, w, 1 }, ' ', st);
+        snprintf(cell, sizeof(cell), " %.*s", (int)(w - 2), cl[i].title); // ASCII names: a byte is a column
+        scr_puts(scr, x, node->rect.y, cell, st);
+        tabs[ntabs++] = (Tab){ x, x + w, i };
+        x += w;
+    }
+}
+
+static int bar_event(VuiNode *node, VuiCtx *ui, const VuiEvent *e)
+{
+    (void)node;
+    (void)ui;
+    if (e->type != VUI_EVENT_MOUSE || e->mouse.action != VUI_MOUSE_PRESS || e->mouse.button != VUI_MOUSE_LEFT) return 0;
+
+    for (int i = 0; i < ntabs; i++) {
+        if (e->mouse.x >= tabs[i].x0 && e->mouse.x < tabs[i].x1 && tabs[i].client < ncl) {
+            sel = tabs[i].client;
+            retile();
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// ---- the launcher (Alt+p: run in a new terminal, Alt+Shift+p: run in the background) --------------------------------
+// A dmenu: type to narrow the programs on $PATH (names starting with the text first), Up/Down choose, Enter runs.
+// Text with a space in it is run as typed (sh -c); Escape cancels.
+// shortcut: $PATH is scanned each time it opens (a few ms); the filter is prefix then substring, not fuzzy.
+
+static char **cmds;
+static unsigned int ncmds, ncmdscap;
+static unsigned int *match, nmatch;
+static VuiInput *lq;
+static VuiList *ll;
+static VuiNode *lwin;
+static int lbg;
+static VuiOnEvent lq_orig_event;
+
+static int cmp_cmd(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
+
+static void scan_path(void)
+{
+    const char *path = getenv("PATH");
+    char *copy, *dir, *save = NULL;
+
+    for (unsigned int i = 0; i < ncmds; i++) free(cmds[i]);
+    ncmds = 0;
+    if (path == NULL) return;
+    copy = strdup(path);
+
+    for (dir = strtok_r(copy, ":", &save); dir != NULL; dir = strtok_r(NULL, ":", &save)) {
+        DIR *d = opendir(dir);
+        struct dirent *e;
+
+        while (d != NULL && (e = readdir(d)) != NULL) {
+            char full[1024];
+            struct stat st;
+
+            if (e->d_name[0] == '.') continue;
+            snprintf(full, sizeof(full), "%s/%s", dir, e->d_name);
+            if (stat(full, &st) != 0 || !S_ISREG(st.st_mode) || access(full, X_OK) != 0) continue;
+            if (ncmds == ncmdscap) {
+                ncmdscap = ncmdscap != 0 ? ncmdscap * 2 : 1024;
+                cmds = realloc(cmds, ncmdscap * sizeof(*cmds));
+            }
+            cmds[ncmds++] = strdup(e->d_name);
+        }
+        if (d != NULL) closedir(d);
+    }
+    free(copy);
+
+    qsort(cmds, ncmds, sizeof(*cmds), cmp_cmd);
+    {
+        unsigned int w = 0;
+
+        for (unsigned int i = 0; i < ncmds; i++) { // the same program in two directories: once
+            if (w > 0 && strcmp(cmds[w - 1], cmds[i]) == 0) free(cmds[i]);
+            else cmds[w++] = cmds[i];
+        }
+        ncmds = w;
+    }
+}
+
+static void filter(VuiNode *input)
+{
+    char pat[200];
+    size_t len;
+
+    (void)input;
+    input_get_text(lq, pat, sizeof(pat));
+    len = strlen(pat);
+    nmatch = 0;
+
+    for (int pass = 0; pass < 2; pass++) { // names starting with the text, then names containing it
+        for (unsigned int i = 0; i < ncmds; i++) {
+            int starts = strncmp(cmds[i], pat, len) == 0;
+
+            if (pass == 0 ? starts : (!starts && strstr(cmds[i], pat) != NULL)) match[nmatch++] = i;
+        }
+    }
+    list_set_count(ll, nmatch);
+    list_set_cursor(ll, 0);
+}
+
+static const char *launcher_item(VuiList *l, unsigned int i)
+{
+    (void)l;
+    return cmds[match[i]];
+}
+
+static void close_launcher(void)
+{
+    if (lwin != NULL) vui_overlay_remove(vui_ctx(), lwin);
+    lwin = NULL;
+}
+
+static void run_line(const char *line, int bg)
+{
+    static char text[256];
+    static const char *argv[5];
+    Arg a;
+
+    if (line[0] == '\0') return;
+
+    if (bg) { // detached: its own session, no terminal, no zombie (double fork)
+        pid_t pid = fork();
+
+        if (pid == 0) {
+            if (fork() == 0) {
+                int null = open("/dev/null", O_RDWR);
+
+                setsid();
+                if (null >= 0) { dup2(null, 0); dup2(null, 1); dup2(null, 2); }
+                execl("/bin/sh", "sh", "-c", line, (char *)NULL);
+                _exit(127);
+            }
+            _exit(0);
+        }
+        if (pid > 0) waitpid(pid, NULL, 0);
+        return;
+    }
+
+    snprintf(text, sizeof(text), "%s", line);
+    if (strchr(text, ' ') == NULL) {
+        argv[0] = text;
+        argv[1] = NULL;
+    } else {
+        argv[0] = "sh";
+        argv[1] = "-c";
+        argv[2] = text;
+        argv[3] = NULL;
+    }
+    a.v = argv;
+    spawn(&a);
+}
+
+static void launcher_submit(VuiNode *input)
+{
+    char typed[200], line[200];
+
+    (void)input;
+    input_get_text(lq, typed, sizeof(typed));
+    snprintf(line, sizeof(line), "%s", strchr(typed, ' ') == NULL && nmatch > 0 ? cmds[match[ll->cursor]] : typed);
+    close_launcher();
+    run_line(line, lbg);
+}
+
+static void launcher_pick(VuiList *l, unsigned int i)
+{
+    char line[200];
+
+    (void)l;
+    snprintf(line, sizeof(line), "%s", cmds[match[i]]);
+    close_launcher();
+    run_line(line, lbg);
+}
+
+// Up/Down/PageUp/PageDown move the list while the text field has the focus
+static int launcher_input_event(VuiNode *node, VuiCtx *ui, const VuiEvent *e)
+{
+    if (e->type == VUI_EVENT_KEY && e->key.modifiers == 0 && (e->key.key == VUI_KEY_UP || e->key.key == VUI_KEY_DOWN
+        || e->key.key == VUI_KEY_PAGE_UP || e->key.key == VUI_KEY_PAGE_DOWN)) {
+        return ll->node.on_event(&ll->node, ui, e);
+    }
+    return lq_orig_event(node, ui, e);
+}
+
+static void launch(const Arg *a)
+{
+    VuiCtx *ui = vui_ctx();
+    VuiBorder *b;
+    unsigned int w = vui_width(ui) > 64 ? 60 : vui_width(ui) - 4, h = vui_height(ui) > 16 ? 14 : vui_height(ui) - 2;
+
+    if (lwin != NULL || vui_width(ui) < 20 || vui_height(ui) < 6) return;
+    lbg = a->i != 0;
+    scan_path();
+    match = realloc(match, (ncmds + 1) * sizeof(*match));
+
+    b = border_create(lbg ? "run in background" : "run");
+    b->node.direction = VUI_DIR_COLUMN;
+    lq = input_create(190);
+    lq->node.basis = 1;
+    lq->on_change = filter;
+    lq->on_submit = launcher_submit;
+    lq_orig_event = lq->node.on_event;
+    lq->node.on_event = launcher_input_event;
+    ll = list_create(0, launcher_item);
+    ll->node.grow = 1;
+    ll->on_select = launcher_pick;
+    node_add(&b->node, &lq->node);
+    node_add(&b->node, &ll->node);
+
+    lwin = &b->node;
+    if (vui_overlay_add(ui, lwin, (VuiRect){ (vui_width(ui) - w) / 2, 1, w, h }, VUI_OVERLAY_MODAL | VUI_OVERLAY_DISMISS) != 0) {
+        node_destroy(lwin);
+        lwin = NULL;
+        return;
+    }
+    filter(NULL);
+    vui_set_focus(ui, &lq->node);
 }
 
 int main(void)
@@ -769,6 +1053,7 @@ int main(void)
     bar = node_create();
     bar->basis = 1;
     bar->draw = bar_draw;
+    bar->on_event = bar_event;
     node_add(root, bar);
     node_add(root, screen);
     load_config(0);
@@ -779,6 +1064,7 @@ int main(void)
 
         if (e.type == VUI_EVENT_CLOSE) break;
         reap();
+        refresh_names();
         if (e.type == VUI_EVENT_KEY && (e.key.key == VUI_KEY_NONE || e.key.release)) { // bare modifiers and releases: for the combo only
             exact_keys = 1;
             if (e.key.release) combo_armed = 0; // dwm's keyrelease: any key going up ends the combo

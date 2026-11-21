@@ -6,7 +6,7 @@ Vapor terminal multiplexer: a dwm-style tiling multiplexer (tags, master/stack l
     ./vtmux
 
 Alt is the Mod key: Alt+c new, Alt+Shift+c close, Alt+j/k focus, Alt+h/l resize, Alt+i/d master count,
-Alt+Shift+j/k rotate the stack, Alt+m monocle on/off, Alt+Ctrl+<number row> toggle a tag in the view (+Shift: on the terminal), Alt+Enter zoom, Alt+Tab previous tag, Alt+<number row> view tag, Alt+Shift+<number row> move to tag,
+Alt+Shift+j/k rotate the stack, Alt+p launcher (run a program in a new terminal), Alt+Shift+p launcher (run it in the background), Alt+m monocle on/off, Alt+Ctrl+<number row> toggle a tag in the view (+Shift: on the terminal), Alt+Enter zoom, Alt+Tab previous tag, Alt+<number row> view tag, Alt+Shift+<number row> move to tag,
 Alt+F1..F9 / Alt+Shift+F1..F9 the same on any layout, Alt+Shift+r reload the config, Alt+Shift+q quit.
 
 ## Configuration
@@ -21,7 +21,7 @@ start and again by Alt+Shift+r, no rebuild: see `vtmux.conf.example`.
 
 Chords are `Mod+key` (Alt, Shift, Ctrl). A letter is the key that types it on your layout, a digit is the key in that
 position of the number row, so `Alt+1` is the same key on AZERTY. Actions: `spawn [cmd...]` (no quoting, 8 words
-max), `kill`, `focus +1|-1`, `nmaster +1|-1`, `mfact +0.05|-0.05`, `arrange tile|monocle|toggle`, `rotatestack +1|-1`, `toggleview N`, `toggletag N`, `zoom`, `view N|prev|all`, `tag N|all`,
+max), `kill`, `focus +1|-1`, `nmaster +1|-1`, `mfact +0.05|-0.05`, `arrange tile|monocle|toggle`, `launch [bg]`, `rotatestack +1|-1`, `toggleview N`, `toggletag N`, `zoom`, `view N|prev|all`, `tag N|all`,
 `reload`, `quit`. `tbind <chord> pageup|pagedown|lineup|linedown|top|bottom|copy|paste|none` sets keys of the focused terminal (scroll, copy, paste); unlisted keys keep the defaults: Shift+PageUp/Down, Shift+Home/End, Ctrl+Shift+C/V, mouse wheel, drag to select (Shift+drag when the program uses the mouse); `none` swallows a key. A bad line is skipped and reported in the bar. `$VTMUX_CONF` points at another file.
 Note: `config.h` is copied from `config.def.h` once; delete it after updating to get new default keys (the reload key).
 
@@ -41,8 +41,8 @@ smaller terminals and one libvterm (see vaporUI docs/small-targets.md).
 - [x] combo: like dwm's patch, press a tag key while the previous tag key is still held (Alt+1, then 2 with 1 still down) to view both; any key release ends it (Linux and Windows consoles report releases). Terminal windows can't see releases, so there a second tag key within 300 ms (`set combo <ms>`, 0 = off) counts as held. `toggleview` (Alt+Ctrl+number) is the other way
 - [x] pertag: each tag keeps its own arrangement (tile or monocle), master size and master count (a view of several tags shares one more set). Not done: a grid arrangement
 - [x] rotatestack: Alt+Shift+j/k (the master area stays, the focused terminal moves with the stack)
-- [ ] simple dmenu-like utility, simply opens a new terminal with the selected program with alt-p or runs scripts/processes in the background with alt-P
+- [x] launcher (Alt+p / Alt+Shift+p): type to narrow the programs on $PATH (prefix matches first, then substring), Up/Down, Enter runs it in a new terminal or, with Alt+Shift+p, detached in the background; text with a space is run as typed (`sh -c`). Not done: fuzzy matching, scripts outside $PATH, history
 - [x] config file `~/.config/vtmux.conf` with reload (Alt+Shift+r). Not done: `~/.vtmux.conf` as a second location, quoting in `spawn`, setting the focus colour or tag names from the file
-- [ ] display names of the terminals in the current focused tag(s) in the status bar as tabs
+- [x] terminals in view are tabs in the bar ("<number> - <name>", the name is the program in the terminal's foreground, read from /proc on Linux); click one to focus it. The same title is on the frame. Not done: names from the terminal's own title (OSC 0/2), which the widget doesn't expose yet
 - [x] scroll / copy / paste keys of the terminal are configurable (`tbind`)
 - [x] mouse selection with Ctrl+Shift+C / Ctrl+Shift+V (vaporUI's terminal widget). Not done: double/triple click, reading the system clipboard (paste uses vaporUI's in-process clipboard; the host terminal's own paste works)
