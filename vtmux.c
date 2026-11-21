@@ -13,8 +13,16 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#define strtok_r strtok_s
+#define VTMUX_PATH_SEP ";"
+int vtmux_spawn_detached(const char *line); // winproc.c
+unsigned long long vtmux_tick_ms(void);
+#else
 #include <sys/wait.h>
 #include <unistd.h>
+#define VTMUX_PATH_SEP ":"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -282,8 +290,13 @@ static void spawn(const Arg *a)
 
     cl[ncl] = (Client){ .term = t, .frame = b, .tags = curview, .num = ++serial };
     {
+#ifdef _WIN32
+        const char *cmd = argv != NULL && argv[0] != NULL ? argv[0] : getenv("COMSPEC");
+        const char *slash = cmd != NULL ? strrchr(cmd, '\\') : NULL;
+#else
         const char *cmd = argv != NULL && argv[0] != NULL ? argv[0] : getenv("SHELL");
         const char *slash = cmd != NULL ? strrchr(cmd, '/') : NULL;
+#endif
 
         snprintf(cl[ncl].fallback, sizeof(cl[ncl].fallback), "%s", slash != NULL ? slash + 1 : cmd != NULL ? cmd : "sh");
     }
@@ -330,10 +343,14 @@ static void zoom(const Arg *a)
 
 static unsigned long long now_ms(void)
 {
+#ifdef _WIN32
+    return vtmux_tick_ms();
+#else
     struct timespec t;
 
     clock_gettime(CLOCK_MONOTONIC, &t);
     return (unsigned long long)t.tv_sec * 1000 + (unsigned long long)t.tv_nsec / 1000000;
+#endif
 }
 
 static unsigned long long last_view_ms;
@@ -715,7 +732,11 @@ static void place_bar(void)
 // Defaults from config.h, then the file. A bad line is reported (the first one, in the bar) and skipped.
 static void load_config(int announce)
 {
+#ifdef _WIN32
+    const char *conf = getenv("VTMUX_CONF"), *h = getenv("USERPROFILE");
+#else
     const char *conf = getenv("VTMUX_CONF"), *h = getenv("HOME");
+#endif
     char path[512], line[512], first[96] = "";
     FILE *f;
     int lineno = 0, bad = 0;
@@ -892,7 +913,7 @@ static void scan_path(void)
     if (path == NULL) return;
     copy = strdup(path);
 
-    for (dir = strtok_r(copy, ":", &save); dir != NULL; dir = strtok_r(NULL, ":", &save)) {
+    for (dir = strtok_r(copy, VTMUX_PATH_SEP, &save); dir != NULL; dir = strtok_r(NULL, VTMUX_PATH_SEP, &save)) {
         DIR *d = opendir(dir);
         struct dirent *e;
 
@@ -902,7 +923,17 @@ static void scan_path(void)
 
             if (e->d_name[0] == '.') continue;
             snprintf(full, sizeof(full), "%s/%s", dir, e->d_name);
+#ifdef _WIN32
+            {
+                char *dot = strrchr(e->d_name, '.');
+
+                if (dot == NULL || (_stricmp(dot, ".exe") && _stricmp(dot, ".bat") && _stricmp(dot, ".cmd") && _stricmp(dot, ".com"))) continue;
+                if (stat(full, &st) != 0 || !S_ISREG(st.st_mode)) continue;
+                *dot = '\0'; // "notepad", not "notepad.exe"
+            }
+#else
             if (stat(full, &st) != 0 || !S_ISREG(st.st_mode) || access(full, X_OK) != 0) continue;
+#endif
             if (ncmds == ncmdscap) {
                 ncmdscap = ncmdscap != 0 ? ncmdscap * 2 : 1024;
                 cmds = realloc(cmds, ncmdscap * sizeof(*cmds));
@@ -966,6 +997,12 @@ static void run_line(const char *line, int bg)
 
     if (line[0] == '\0') return;
 
+#ifdef _WIN32
+    if (bg) {
+        vtmux_spawn_detached(line);
+        return;
+    }
+#else
     if (bg) { // detached: its own session, no terminal, no zombie (double fork)
         pid_t pid = fork();
 
@@ -983,14 +1020,20 @@ static void run_line(const char *line, int bg)
         if (pid > 0) waitpid(pid, NULL, 0);
         return;
     }
+#endif
 
     snprintf(text, sizeof(text), "%s", line);
     if (strchr(text, ' ') == NULL) {
         argv[0] = text;
         argv[1] = NULL;
     } else {
+#ifdef _WIN32
+        argv[0] = "cmd.exe";
+        argv[1] = "/c";
+#else
         argv[0] = "sh";
         argv[1] = "-c";
+#endif
         argv[2] = text;
         argv[3] = NULL;
     }

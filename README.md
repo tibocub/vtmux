@@ -1,6 +1,6 @@
 # vtmux
 Vapor terminal multiplexer: a dwm-style tiling multiplexer (tags, master/stack layout) built on
-[vaporUI](../vaporUI)'s terminal widget. Linux today; Windows and vaporOS are the goal.
+[vaporUI](../vaporUI)'s terminal widget. Linux today, Windows next; vaporOS is the goal.
 
     make                      # needs ../vaporUI, or make VAPORUI=/path/to/vaporUI
     ./vtmux
@@ -35,10 +35,20 @@ that can't say which physical key was pressed (anything but kitty, foot, WezTerm
 told your layout (vaporUI also asks the OS: GNOME/X settings, vconsole.conf, Windows): `layout = "fr"` in `config.h` or `VUI_LAYOUT=fr ./vtmux`. Layouts live in vaporUI
 (`src/input.c`): add yours there. Letters are bound by what they type (`CH('q')`, like dwm's `XK_q`).
 
-Status: Linux (desktop terminals and the console). vaporUI's Windows backend now handles keys, mouse and output
-natively (see its docs/input.md), but the terminal widget that runs the shells is POSIX-only (forkpty), so vtmux
-does not build on Windows yet: that needs a ConPTY back end in the widget (`CreatePseudoConsole`). vaporOS needs
-smaller terminals and one libvterm (see vaporUI docs/small-targets.md).
+## Windows (first build, not yet run on a real Windows console)
+    make TARGET=WIN32 CC=x86_64-w64-mingw32-gcc      # cross-build vtmux.exe from Linux; plain `make` under MSYS2
+Needs Windows 10 1809+ (vaporUI's terminal widget uses ConPTY). New terminals run `%COMSPEC%` (cmd.exe); set another
+with `set term pwsh` (or `set term wsl`) in `%USERPROFILE%\.config\vtmux.conf`. The launcher lists the `.exe`, `.bat`,
+`.cmd` and `.com` files of `%PATH%`; text with a space runs through `cmd /c`; the background run is detached with no window.
+Terminal names are the command each terminal was started with (the live foreground name is Linux only). Keys come from
+console records, so Ctrl/Alt/Shift combos, key releases (the exact combo) and the mouse work as on the Linux console.
+Windows Terminal takes some keys before vtmux sees them: Alt+Enter (zoom), Alt+Ctrl+digit (toggleview), Ctrl+Shift+C/V
+(use the terminal's own copy/paste, or `tbind`), Shift+PageUp/Down, F11. Rebind what you need, e.g.
+`bind Alt+z zoom`, `bind Alt+Shift+t toggleview 1`; conhost itself only takes Alt+Enter. Windows has no clipboard read in
+vaporUI: paste with the host terminal's own paste.
+
+Status: Linux (desktop terminals and the console) works; Windows builds but is untested; vaporOS needs smaller
+terminals and one libvterm (see vaporUI docs/small-targets.md).
 
 ## TODO
 - [x] alt-m monocle mode (full screen terminals, rotate with alt-j/alt-k)
