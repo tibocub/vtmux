@@ -1,31 +1,51 @@
-// vtmux: vapor terminal multiplexer, dwm-style (tags, master/stack tiling) built on the terminal widget.
-//
-// Keys: Alt is dwm's Mod. Alt+Shift+<letter> is typed as Alt+<capital>. Everything else goes to the focused terminal.
-//   Alt+c        new terminal on the current tag      Alt+C   close the focused terminal
-//   Alt+j / k    focus next / previous                Alt+Enter  zoom: swap with the master
-//   Alt+1..9     view tag n (Alt+0: all tags)         Alt+F1..F9  same, for any keyboard layout
-//   Alt+!..(     move the focused terminal to tag n   Alt+Shift+F1..F9  same (QWERTY: Alt+Shift+1..9)
-//   Alt+Tab      view the previous tag
-//   Alt+h / l    shrink / grow the master area        Alt+i / d   more / fewer terminals in the master area
-//   Alt+Q        quit
+// vtmux: vapor terminal multiplexer, dwm-style. Tags, master/stack tiling, Alt as the Mod key.
+// Configuration is config.h (see config.def.h for the key list), like dwm.
 //
 // Verify:
-//   - the bar shows the tags 1..9: the viewed one highlighted, tags holding terminals marked with '.'
-//   - Alt+c opens shells that tile (master left, stack right); Alt+h/l, Alt+i/d reshape them live
-//   - the focused terminal has the bold frame and the cursor; Alt+j/k move it
-//   - Alt+Shift+2 sends the focused terminal to tag 2 (it disappears from view), Alt+2 shows it, still running
-//   - `exit` in a shell removes its terminal; Alt+C kills one
-//   - resizing the window re-tiles; Alt+Q quits
+//   - the bar (top by default) shows the tags: the viewed one highlighted, tags holding terminals marked with '.'
+//   - the new-terminal key opens shells that tile (master left, stack right); the mfact / nmaster keys reshape live
+//   - the focused terminal has the bold frame and the cursor; the focus keys move it
+//   - tagging sends the focused terminal to another tag (it disappears from view), viewing that tag shows it, still running
+//   - `exit` in a shell removes its terminal; the close key kills one
+//   - resizing the window re-tiles; the quit key quits
 
 #include <stdio.h>
+#include <string.h>
 
 #include <vaporui.h>
 
 #ifndef VUI_TERMINAL
-int main(void) { puts("mux vtmux needs the vaporUI terminal widget (POSIX build)"); return 1; }
+int main(void) { puts("vtmux needs the vaporUI terminal widget (POSIX build)"); return 1; }
 #else
 
-#define NTAGS 9
+typedef union {
+    int i;
+    unsigned int ui;
+    float f;
+    const void *v;
+} Arg;
+
+typedef struct {
+    VuiModifiers mods;
+    VuiKey key;
+    VuiCodepoint ch; // for VUI_KEY_CHAR
+    void (*func)(const Arg *);
+    Arg arg;
+} Key;
+
+static void spawn(const Arg *a);
+static void killclient(const Arg *a);
+static void focusstack(const Arg *a);
+static void incnmaster(const Arg *a);
+static void setmfact(const Arg *a);
+static void zoom(const Arg *a);
+static void view(const Arg *a);
+static void tag(const Arg *a);
+static void quit(const Arg *a);
+
+#include "config.h"
+
+#define NTAGS ((int)(sizeof(tags) / sizeof(tags[0])))
 #define MAXC  16
 
 typedef struct {
@@ -38,13 +58,13 @@ typedef struct {
 
 static Client cl[MAXC]; // tile order, master first
 static int ncl, sel = -1;
-static unsigned int view = 1, prev_view = 1;
-static float mfact = 0.55f;
-static int nmaster = 1;
+static unsigned int curview = 1, prevview = 1;
+static float curmfact = mfact;
+static int curnmaster = nmaster;
 static unsigned int serial;
 static VuiNode *screen, *bar;
 
-static int visible(int i) { return cl[i].tags & view; }
+static int visible(int i) { return cl[i].tags & curview; }
 
 // The nth visible client, or -1
 static int nth(int n)
@@ -67,21 +87,20 @@ static int count_visible(void)
 static void retile(void)
 {
     VuiTheme *th = vui_theme();
-    int n = count_visible(), m = nmaster < n ? nmaster : n;
+    int n = count_visible(), m = curnmaster < n ? curnmaster : n;
     VuiDiv *col[2] = { NULL, NULL };
 
     for (int i = 0; i < ncl; i++) {
         if (cl[i].frame->node.parent != NULL) node_remove(&cl[i].frame->node);
     }
-    while (screen->child_count > 0) {  // the old, now empty columns
+    while (screen->child_count > 0) { // the old, now empty columns
         VuiNode *old = screen->children[screen->child_count - 1];
 
         node_remove(old);
         node_destroy(old);
     }
 
-    if (sel >= 0 && !visible(sel)) sel = nth(0);
-    if (sel < 0) sel = nth(0);
+    if (sel < 0 || !visible(sel)) sel = nth(0);
 
     for (int k = 0, seen = 0; k < ncl; k++) {
         int c;
@@ -92,26 +111,21 @@ static void retile(void)
         if (col[c] == NULL) {
             col[c] = div_create(VUI_DIR_COLUMN);
             col[c]->node.basis = 0;
-            col[c]->node.grow = c ? (n > m ? 1.0f - mfact : 0) : (n > m ? mfact : 1.0f);
+            col[c]->node.grow = c ? 1.0f - curmfact : (n > m ? curmfact : 1.0f);
             node_add(screen, &col[c]->node);
         }
 
         cl[k].frame->node.basis = 0;
         cl[k].frame->node.grow = 1;
         cl[k].frame->style = th->border;
-        if (k == sel) cl[k].frame->style.attr |= VUI_ATTR_BOLD, cl[k].frame->style.fg = VUI_COLOR_BRIGHT_GREEN;
+        if (k == sel) {
+            cl[k].frame->style.attr |= VUI_ATTR_BOLD;
+            cl[k].frame->style.fg = focuscolor;
+        }
         node_add(&col[c]->node, &cl[k].frame->node);
     }
 
     if (sel >= 0) vui_set_focus(vui_ctx(), &cl[sel].term->node);
-}
-
-static void set_view(unsigned int v)
-{
-    if (v == view) return;
-    prev_view = view;
-    view = v;
-    retile();
 }
 
 static void on_exit_cb(VuiNode *t, int status)
@@ -142,14 +156,15 @@ static void reap(void)
     if (changed) retile();
 }
 
-static void spawn(void)
+static void spawn(const Arg *a)
 {
     VuiTerminal *t;
     VuiBorder *b;
+    const char *const *argv = a->v;
 
     if (ncl == MAXC) return;
 
-    t = terminal_create(NULL);
+    t = terminal_create(argv != NULL && argv[0] != NULL ? argv : NULL); // NULL: $SHELL
     if (t == NULL) return;
 
     b = border_create(NULL);
@@ -157,14 +172,21 @@ static void spawn(void)
     b->node.direction = VUI_DIR_COLUMN;
     node_add(&b->node, &t->node);
 
-    cl[ncl] = (Client){ .term = t, .frame = b, .tags = view ? view : 1 };
+    cl[ncl] = (Client){ .term = t, .frame = b, .tags = curview };
     snprintf(cl[ncl].title, sizeof(cl[ncl].title), "%u", ++serial);
     b->title = cl[ncl].title;
     sel = ncl++;
     retile();
 }
 
-static void focus_step(int dir)
+static void killclient(const Arg *a)
+{
+    (void)a;
+    if (sel >= 0) cl[sel].dead = 1;
+    reap();
+}
+
+static void focusstack(const Arg *a)
 {
     int n = count_visible(), at = 0;
 
@@ -172,18 +194,19 @@ static void focus_step(int dir)
     for (int k = 0; k < n; k++) {
         if (nth(k) == sel) at = k;
     }
-    sel = nth((at + dir + n) % n);
+    sel = nth((at + a->i + n) % n);
     retile();
 }
 
-static void zoom(void)
+// Like dwm's zoom: the focused client goes first in the tile order (the old master goes second)
+static void zoom(const Arg *a)
 {
     int m = nth(0);
     Client c;
 
+    (void)a;
     if (sel < 0 || m < 0 || sel == m) return;
 
-    // move the focused client to the front of the tile order, like dwm's zoom (the old master goes second)
     c = cl[sel];
     for (int j = sel; j > 0; j--) cl[j] = cl[j - 1];
     cl[0] = c;
@@ -191,86 +214,78 @@ static void zoom(void)
     retile();
 }
 
-static void tag_client(unsigned int mask)
+static void view(const Arg *a)
 {
+    unsigned int v = a->ui & ((1u << NTAGS) - 1); // 0: back to the previous tag
+
+    if (v == 0) v = prevview;
+    if (v == curview) return;
+    prevview = curview;
+    curview = v;
+    retile();
+}
+
+static void tag(const Arg *a)
+{
+    unsigned int mask = a->ui & ((1u << NTAGS) - 1);
+
     if (sel < 0 || mask == 0) return;
     cl[sel].tags = mask;
     retile();
 }
 
-static void adjust_mfact(float d)
+static void setmfact(const Arg *a)
 {
-    mfact += d;
-    if (mfact < 0.1f) mfact = 0.1f;
-    if (mfact > 0.9f) mfact = 0.9f;
+    curmfact += a->f;
+    if (curmfact < 0.1f) curmfact = 0.1f;
+    if (curmfact > 0.9f) curmfact = 0.9f;
     retile();
 }
 
-static void adjust_nmaster(int d)
+static void incnmaster(const Arg *a)
 {
-    nmaster += d;
-    if (nmaster < 1) nmaster = 1;
+    curnmaster += a->i;
+    if (curnmaster < 1) curnmaster = 1;
     retile();
 }
 
-// Returns 1 if the key was a mux command
+static void quit(const Arg *a)
+{
+    (void)a;
+    vui_quit(vui_ctx());
+}
+
+// Returns 1 if the key was a vtmux command
 static int command(const VuiKeyEvent *k)
 {
-    static const char shifted[] = "!@#$%^&*("; // Alt+Shift+1..9 on a QWERTY layout
-    VuiCodepoint ch = k->character;
-    int shift = (k->modifiers & VUI_MOD_SHIFT) != 0;
-
-    if (!(k->modifiers & VUI_MOD_ALT)) return 0;
-
-    if (k->key == VUI_KEY_ENTER) { zoom(); return 1; }
-    if (k->key == VUI_KEY_TAB) { set_view(prev_view); return 1; }
-    if (k->key >= VUI_KEY_F1 && k->key < VUI_KEY_F1 + NTAGS) {
-        unsigned int bit = 1u << (k->key - VUI_KEY_F1);
-
-        if (shift) tag_client(bit); else set_view(bit);
-        return 1;
+    for (unsigned int i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
+        if (keys[i].key == k->key && keys[i].mods == k->modifiers && (k->key != VUI_KEY_CHAR || keys[i].ch == k->character)) {
+            keys[i].func(&keys[i].arg);
+            return 1;
+        }
     }
-    if (k->key != VUI_KEY_CHAR) return 0;
-
-    if (ch >= '1' && ch <= '9') { set_view(1u << (ch - '1')); return 1; }
-    if (ch == '0') { set_view((1u << NTAGS) - 1); return 1; }
-    for (int i = 0; i < NTAGS; i++) {
-        if (ch == (VuiCodepoint)shifted[i]) { tag_client(1u << i); return 1; }
-    }
-
-    switch (ch) {
-    case 'c': spawn(); return 1;
-    case 'C': if (sel >= 0) { cl[sel].dead = 1; reap(); } return 1;
-    case 'j': focus_step(1); return 1;
-    case 'k': focus_step(-1); return 1;
-    case 'h': adjust_mfact(-0.05f); return 1;
-    case 'l': adjust_mfact(0.05f); return 1;
-    case 'i': adjust_nmaster(1); return 1;
-    case 'd': adjust_nmaster(-1); return 1;
-    case 'Q': vui_quit(vui_ctx()); return 1;
-    default:  return 0;
-    }
+    return 0;
 }
 
 static void bar_draw(VuiNode *node, VuiScreen *scr, void *userdata)
 {
     VuiTheme *th = vui_theme();
     unsigned int occupied = 0, x = node->rect.x;
-    char s[8];
+    char s[16];
 
     (void)userdata;
     scr_fill(scr, node->rect, ' ', th->bar);
     for (int i = 0; i < ncl; i++) occupied |= cl[i].tags;
 
     for (int i = 0; i < NTAGS; i++) {
-        VuiStyle st = (view & (1u << i)) ? th->focus : th->bar;
+        VuiStyle st = (curview & (1u << i)) ? th->focus : th->bar;
 
-        snprintf(s, sizeof(s), " %d%c", i + 1, (occupied & (1u << i)) ? '.' : ' ');
+        snprintf(s, sizeof(s), " %s%c", tags[i], (occupied & (1u << i)) ? '.' : ' ');
         scr_puts(scr, x, node->rect.y, s, st);
-        x += 3;
+        x += vui_strn_width(s, strlen(s));
     }
 
-    snprintf(s, sizeof(s), " [%d]", nmaster);
+    snprintf(s, sizeof(s), " [%d]", curnmaster);
     scr_puts(scr, x + 1, node->rect.y, s, th->bar);
 }
 
@@ -278,6 +293,7 @@ int main(void)
 {
     VuiCtx *ui = vui_init();
     VuiNode *root = &div_create(VUI_DIR_COLUMN)->node;
+    Arg first = { .v = termcmd };
 
     if (ui == NULL) return 1;
 
@@ -286,10 +302,10 @@ int main(void)
     bar = node_create();
     bar->basis = 1;
     bar->draw = bar_draw;
-    node_add(root, screen);
-    node_add(root, bar);
+    node_add(root, topbar ? bar : screen);
+    node_add(root, topbar ? screen : bar);
 
-    spawn();
+    spawn(&first);
 
     for (;;) {
         VuiEvent e = vui_next_event(ui, root);
