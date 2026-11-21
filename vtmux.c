@@ -853,6 +853,7 @@ static VuiList *ll;
 static VuiNode *lwin;
 static int lbg;
 static VuiOnEvent lq_orig_event;
+static void (*lwin_orig_destroy)(VuiNode *);
 
 static int cmp_cmd(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
 
@@ -993,9 +994,21 @@ static void launcher_pick(VuiList *l, unsigned int i)
     run_line(line, lbg);
 }
 
-// Up/Down/PageUp/PageDown move the list while the text field has the focus
+// The overlay can also go away by itself (a click outside it): forget it, or the launcher would never open again
+static void launcher_destroyed(VuiNode *node)
+{
+    if (lwin == node) lwin = NULL;
+    if (lwin_orig_destroy != NULL) lwin_orig_destroy(node);
+}
+
+// Up/Down/PageUp/PageDown move the list while the text field has the focus; Escape closes
 static int launcher_input_event(VuiNode *node, VuiCtx *ui, const VuiEvent *e)
 {
+    if (e->type == VUI_EVENT_KEY && e->key.key == VUI_KEY_ESCAPE && e->key.modifiers == 0) {
+        close_launcher();
+        return 1;
+    }
+
     if (e->type == VUI_EVENT_KEY && e->key.modifiers == 0 && (e->key.key == VUI_KEY_UP || e->key.key == VUI_KEY_DOWN
         || e->key.key == VUI_KEY_PAGE_UP || e->key.key == VUI_KEY_PAGE_DOWN)) {
         return ll->node.on_event(&ll->node, ui, e);
@@ -1029,6 +1042,8 @@ static void launch(const Arg *a)
     node_add(&b->node, &ll->node);
 
     lwin = &b->node;
+    lwin_orig_destroy = b->node.destroy;
+    b->node.destroy = launcher_destroyed;
     if (vui_overlay_add(ui, lwin, (VuiRect){ (vui_width(ui) - w) / 2, 1, w, h }, VUI_OVERLAY_MODAL | VUI_OVERLAY_DISMISS) != 0) {
         node_destroy(lwin);
         lwin = NULL;
