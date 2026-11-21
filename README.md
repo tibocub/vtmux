@@ -27,3 +27,4 @@ terminals and one libvterm (see vaporUI docs/small-targets.md).
 - [ ] rotatestack (like the dwm patch, rotate the whole stack with alt-J/alt-K)
 - [ ] simple dmenu-like utility, simply opens a new terminal with the selected program with alt-p or runs scripts/processes in the background with alt-P
 - [ ] make a simple config system to load user config from ~/.config/vtmux.conf or ~/.vtmux.conf to allow dynamic configuartion editing and reloading
+- [ ] display names of the terminals in the current focused tag(s) in the status bar as tabs
