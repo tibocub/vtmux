@@ -9,7 +9,9 @@
 //   - `exit` in a shell removes its terminal; the close key kills one
 //   - resizing the window re-tiles; the quit key quits
 
+#include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <vaporui.h>
@@ -43,6 +45,7 @@ static void zoom(const Arg *a);
 static void view(const Arg *a);
 static void tag(const Arg *a);
 static void quit(const Arg *a);
+static void reload(const Arg *a);
 
 #include "config.h"
 
@@ -63,7 +66,21 @@ static unsigned int curview = 1, prevview = 1;
 static float curmfact = mfact;
 static int curnmaster = nmaster;
 static unsigned int serial;
-static VuiNode *screen, *bar;
+static VuiNode *root, *screen, *bar;
+
+// Key bindings and settings as they are now: config.h's defaults, then ~/.config/vtmux.conf on top
+#define MAXBIND 128
+typedef struct {
+    Key k;
+    const char *argv[9]; // spawn's command, NULL-terminated
+    char text[256];      // storage for argv
+} Bind;
+
+static Bind binds[MAXBIND];
+static int nbinds;
+static char msg[96]; // shown in the bar until the next key
+static const char *const *term_argv = termcmd;
+static int top = topbar;
 
 static int visible(int i) { return cl[i].tags & curview; }
 
@@ -161,7 +178,7 @@ static void spawn(const Arg *a)
 {
     VuiTerminal *t;
     VuiBorder *b;
-    const char *const *argv = a->v;
+    const char *const *argv = a->v == termcmd ? term_argv : a->v;
 
     if (ncl == MAXC) return;
 
@@ -259,13 +276,272 @@ static void quit(const Arg *a)
 // Returns 1 if the key was a vtmux command
 static int command(const VuiKeyEvent *k)
 {
-    for (unsigned int i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
-        if (keys[i].key == k->key && keys[i].mods == k->modifiers && (k->key != VUI_KEY_CHAR || keys[i].ch == (keys[i].physical ? k->base : k->character))) {
-            keys[i].func(&keys[i].arg);
+    for (int i = 0; i < nbinds; i++) {
+        const Key *b = &binds[i].k;
+
+        if (b->key == k->key && b->mods == k->modifiers && (k->key != VUI_KEY_CHAR || b->ch == (b->physical ? k->base : k->character))) {
+            b->func(&b->arg);
             return 1;
         }
     }
     return 0;
+}
+
+// ---- ~/.config/vtmux.conf ----------------------------------------------------------------------------------------
+//   # comment
+//   set mfact 0.6            set nmaster 2        set topbar 0        set layout fr        set term /bin/zsh
+//   bind Alt+Shift+c kill    bind Alt+x spawn htop    bind Alt+9 view 9    unbind Alt+Enter
+// Chords are Mod+key, Mod = Alt, Shift, Ctrl in any order, key = a character, Enter Tab Escape Space Backspace Up Down
+// Left Right Home End PageUp PageDown Insert Delete F1..F12. A letter is the key that types it on your layout; a digit
+// is the key in that position of the number row (so Alt+1 is the same key on AZERTY). Actions: spawn [cmd...], kill,
+// focus +1|-1, nmaster +1|-1, mfact +0.05|-0.05, zoom, view N|prev|all, tag N|all, reload, quit.
+// shortcut: spawn's command is split on spaces (no quoting); at most 8 words.
+
+static const struct { const char *name; void (*func)(const Arg *); } actions[] = {
+    { "spawn", spawn }, { "kill", killclient }, { "focus", focusstack }, { "nmaster", incnmaster },
+    { "mfact", setmfact }, { "zoom", zoom }, { "view", view }, { "tag", tag }, { "reload", reload }, { "quit", quit },
+};
+
+static const struct { const char *name; VuiKey key; } named_keys[] = {
+    { "enter", VUI_KEY_ENTER }, { "return", VUI_KEY_ENTER }, { "tab", VUI_KEY_TAB }, { "escape", VUI_KEY_ESCAPE },
+    { "esc", VUI_KEY_ESCAPE }, { "backspace", VUI_KEY_BACKSPACE }, { "up", VUI_KEY_UP }, { "down", VUI_KEY_DOWN },
+    { "left", VUI_KEY_LEFT }, { "right", VUI_KEY_RIGHT }, { "home", VUI_KEY_HOME }, { "end", VUI_KEY_END },
+    { "pageup", VUI_KEY_PAGE_UP }, { "pagedown", VUI_KEY_PAGE_DOWN }, { "insert", VUI_KEY_INSERT }, { "delete", VUI_KEY_DELETE },
+};
+
+static int same_word(const char *a, const char *b)
+{
+    for (; *a != '\0' && *b != '\0'; a++, b++) {
+        if (tolower((unsigned char)*a) != tolower((unsigned char)*b)) return 0;
+    }
+    return *a == *b;
+}
+
+// One UTF-8 character that is the whole string, or 0
+static VuiCodepoint one_char(const char *s)
+{
+    const unsigned char *u = (const unsigned char *)s;
+    int n = u[0] < 0x80 ? 1 : u[0] >= 0xF0 ? 4 : u[0] >= 0xE0 ? 3 : u[0] >= 0xC0 ? 2 : 0;
+    VuiCodepoint c = n == 1 ? u[0] : n == 2 ? (u[0] & 0x1F) : n == 3 ? (u[0] & 0x0F) : (u[0] & 0x07);
+
+    if (n == 0) return 0;
+    for (int i = 1; i < n; i++) {
+        if ((u[i] & 0xC0) != 0x80) return 0;
+        c = (c << 6) | (u[i] & 0x3F);
+    }
+    return s[n] == '\0' ? c : 0;
+}
+
+static int parse_chord(char *s, Key *k)
+{
+    char *tok;
+
+    *k = (Key){ 0 };
+    while ((tok = strchr(s, '+')) != NULL && tok != s && tok[1] != '\0') {
+        *tok = '\0';
+        if (same_word(s, "alt") || same_word(s, "mod")) k->mods |= VUI_MOD_ALT;
+        else if (same_word(s, "shift")) k->mods |= VUI_MOD_SHIFT;
+        else if (same_word(s, "ctrl") || same_word(s, "control")) k->mods |= VUI_MOD_CTRL;
+        else return -1;
+        s = tok + 1;
+    }
+
+    for (unsigned int i = 0; i < sizeof(named_keys) / sizeof(named_keys[0]); i++) {
+        if (same_word(s, named_keys[i].name)) { k->key = named_keys[i].key; return 0; }
+    }
+    if ((s[0] == 'F' || s[0] == 'f') && atoi(s + 1) >= 1 && atoi(s + 1) <= 12 && strspn(s + 1, "0123456789") == strlen(s + 1)) {
+        k->key = (VuiKey)(VUI_KEY_F1 + atoi(s + 1) - 1);
+        return 0;
+    }
+    if (same_word(s, "space")) { k->key = VUI_KEY_CHAR; k->ch = ' '; return 0; }
+
+    k->ch = one_char(s);
+    if (k->ch == 0) return -1;
+    k->key = VUI_KEY_CHAR;
+    k->physical = k->ch >= '0' && k->ch <= '9';
+    if (k->ch < 0x80) k->ch = (VuiCodepoint)tolower((int)k->ch);
+    return 0;
+}
+
+static int tag_arg(const char *s, unsigned int *mask)
+{
+    if (same_word(s, "all")) { *mask = ~0u; return 0; }
+    if (same_word(s, "prev")) { *mask = 0; return 0; }
+    if (s[0] >= '1' && s[0] <= '9' && s[1] == '\0' && s[0] - '1' < NTAGS) { *mask = 1u << (s[0] - '1'); return 0; }
+    return -1;
+}
+
+// Copy a binding; its command words point into its own text
+static void store(Bind *dst, const Bind *src)
+{
+    *dst = *src;
+    for (int j = 0; j < 9; j++) {
+        if (src->argv[j] != NULL) dst->argv[j] = dst->text + (src->argv[j] - src->text);
+    }
+    if (src->k.arg.v == (const void *)src->argv) dst->k.arg.v = dst->argv;
+}
+
+static void add_bind(const Bind *b)
+{
+    int at = nbinds;
+
+    for (int i = 0; i < nbinds; i++) {
+        const Key *o = &binds[i].k;
+
+        if (o->mods == b->k.mods && o->key == b->k.key && o->ch == b->k.ch && o->physical == b->k.physical) at = i;
+    }
+    if (at < MAXBIND) {
+        store(&binds[at], b);
+        if (at == nbinds) nbinds++;
+    }
+}
+
+static void remove_bind(const Key *k)
+{
+    for (int i = 0; i < nbinds; i++) {
+        const Key *o = &binds[i].k;
+
+        if (o->mods == k->mods && o->key == k->key && o->ch == k->ch && o->physical == k->physical) {
+            binds[i] = binds[--nbinds];
+            return;
+        }
+    }
+}
+
+// One line; returns an error text or NULL
+static const char *conf_line(char *line)
+{
+    char *word[12], *save = NULL, *t;
+    int n = 0;
+
+    if ((t = strchr(line, '#')) != NULL) *t = '\0';
+    for (t = strtok_r(line, " \t\r\n", &save); t != NULL && n < 12; t = strtok_r(NULL, " \t\r\n", &save)) word[n++] = t;
+    if (n == 0) return NULL;
+
+    if (same_word(word[0], "set")) {
+        if (n < 3) return "set needs a name and a value";
+        if (same_word(word[1], "mfact")) curmfact = (float)atof(word[2]);
+        else if (same_word(word[1], "nmaster")) curnmaster = atoi(word[2]);
+        else if (same_word(word[1], "topbar")) top = atoi(word[2]) != 0;
+        else if (same_word(word[1], "layout")) { if (vui_set_layout(word[2]) != 0) return "unknown layout"; }
+        else if (same_word(word[1], "term")) {
+            static char text[256];
+            static const char *words[9];
+            size_t at = 0;
+            int w = 0;
+
+            for (int i = 2; i < n && w < 8; i++) {
+                size_t len = strlen(word[i]);
+
+                if (at + len + 1 > sizeof(text)) return "term is too long";
+                memcpy(text + at, word[i], len + 1);
+                words[w++] = text + at;
+                at += len + 1;
+            }
+            words[w] = NULL;
+            term_argv = words;
+        } else return "unknown setting";
+        return NULL;
+    }
+
+    if (same_word(word[0], "unbind") || same_word(word[0], "bind")) {
+        Bind b = { 0 };
+        int bind = same_word(word[0], "bind");
+        unsigned int mask;
+
+        if (n < 2 || (bind && n < 3)) return bind ? "bind needs a key and an action" : "unbind needs a key";
+        if (parse_chord(word[1], &b.k) != 0) return "unknown key";
+        if (!bind) { remove_bind(&b.k); return NULL; }
+
+        for (unsigned int i = 0; i < sizeof(actions) / sizeof(actions[0]); i++) {
+            if (same_word(word[2], actions[i].name)) b.k.func = actions[i].func;
+        }
+        if (b.k.func == NULL) return "unknown action";
+
+        if (b.k.func == spawn) {
+            size_t at = 0;
+            int w = 0;
+
+            for (int i = 3; i < n && w < 8; i++) {
+                size_t len = strlen(word[i]);
+
+                if (at + len + 1 > sizeof(b.text)) return "command is too long";
+                memcpy(b.text + at, word[i], len + 1);
+                b.argv[w++] = b.text + at; // repointed to the stored copy by add_bind
+                at += len + 1;
+            }
+            b.k.arg.v = w > 0 ? (const void *)b.argv : (const void *)termcmd;
+        } else if (b.k.func == focusstack || b.k.func == incnmaster) {
+            if (n < 4) return "needs +1 or -1";
+            b.k.arg.i = atoi(word[3]);
+        } else if (b.k.func == setmfact) {
+            if (n < 4) return "needs +0.05 or -0.05";
+            b.k.arg.f = (float)atof(word[3]);
+        } else if (b.k.func == view || b.k.func == tag) {
+            if (n < 4 || tag_arg(word[3], &mask) != 0) return "needs a tag 1-9, all or prev";
+            if (b.k.func == tag && mask == 0) return "tag needs a tag 1-9 or all";
+            b.k.arg.ui = mask;
+        }
+
+        add_bind(&b);
+        return NULL;
+    }
+
+    return "unknown command";
+}
+
+static void place_bar(void)
+{
+    node_remove(bar);
+    node_remove(screen);
+    node_add(root, top ? bar : screen);
+    node_add(root, top ? screen : bar);
+}
+
+// Defaults from config.h, then the file. A bad line is reported (the first one, in the bar) and skipped.
+static void load_config(int announce)
+{
+    const char *conf = getenv("VTMUX_CONF"), *h = getenv("HOME");
+    char path[512], line[512], first[96] = "";
+    FILE *f;
+    int lineno = 0, bad = 0;
+
+    nbinds = 0;
+    for (unsigned int i = 0; i < sizeof(keys) / sizeof(keys[0]) && nbinds < MAXBIND; i++) binds[nbinds++].k = keys[i];
+    curmfact = mfact;
+    curnmaster = nmaster;
+    top = topbar;
+    term_argv = termcmd;
+    vui_set_layout(layout);
+
+    if (conf != NULL) snprintf(path, sizeof(path), "%s", conf);
+    else if (h != NULL) snprintf(path, sizeof(path), "%s/.config/vtmux.conf", h);
+    else path[0] = '\0';
+
+    f = path[0] != '\0' ? fopen(path, "r") : NULL;
+    if (f == NULL) {
+        if (announce) snprintf(msg, sizeof(msg), "no %s: defaults", path);
+    } else {
+        while (fgets(line, sizeof(line), f) != NULL) {
+            const char *err = conf_line(line);
+
+            lineno++;
+
+            if (err != NULL && !bad++) snprintf(first, sizeof(first), "vtmux.conf:%d: %s", lineno, err);
+        }
+        fclose(f);
+        if (bad) snprintf(msg, sizeof(msg), "%s%s", first, bad > 1 ? " (+more)" : "");
+        else if (announce) snprintf(msg, sizeof(msg), "reloaded");
+    }
+
+    if (bar != NULL) place_bar();
+}
+
+static void reload(const Arg *a)
+{
+    (void)a;
+    load_config(1);
+    retile();
 }
 
 static void bar_draw(VuiNode *node, VuiScreen *scr, void *userdata)
@@ -288,25 +564,25 @@ static void bar_draw(VuiNode *node, VuiScreen *scr, void *userdata)
 
     snprintf(s, sizeof(s), " [%d]", curnmaster);
     scr_puts(scr, x + 1, node->rect.y, s, th->bar);
+    if (msg[0] != '\0') scr_puts(scr, x + 1 + vui_strn_width(s, strlen(s)) + 1, node->rect.y, msg, th->bar);
 }
 
 int main(void)
 {
     VuiCtx *ui = vui_init();
-    VuiNode *root = &div_create(VUI_DIR_COLUMN)->node;
     Arg first = { .v = termcmd };
 
     if (ui == NULL) return 1;
-    vui_set_layout(layout);
+    root = &div_create(VUI_DIR_COLUMN)->node;
 
     screen = &div_create(VUI_DIR_ROW)->node;
     screen->grow = 1;
     bar = node_create();
     bar->basis = 1;
     bar->draw = bar_draw;
-    node_add(root, topbar ? bar : screen);
-    node_add(root, topbar ? screen : bar);
-
+    node_add(root, bar);
+    node_add(root, screen);
+    load_config(0);
     spawn(&first);
 
     for (;;) {
@@ -314,6 +590,7 @@ int main(void)
 
         if (e.type == VUI_EVENT_CLOSE) break;
         reap();
+        if (e.type == VUI_EVENT_KEY) msg[0] = '\0';
         if (e.type == VUI_EVENT_KEY && command(&e.key)) continue;
         vui_dispatch(ui, root, &e);
     }

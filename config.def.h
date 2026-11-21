@@ -5,7 +5,7 @@
 
 /* Terminals other than kitty, foot, WezTerm, Ghostty, Alacritty can't say which physical key was pressed:
  * name your layout ("fr", ...) or set $VUI_LAYOUT. NULL: $VUI_LAYOUT, then "us". */
-static const char *layout      = NULL;
+static const char *layout      = NULL; /* NULL: $VUI_LAYOUT, then the layout the OS reports, then "us" */
 
 static const int topbar        = 1;                       /* 0: bar at the bottom */
 static const char *tags[]      = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };
@@ -49,5 +49,6 @@ static const Key keys[] = {
 	TAGKEYS('1', 0) TAGKEYS('2', 1) TAGKEYS('3', 2) TAGKEYS('4', 3) TAGKEYS('5', 4)
 	TAGKEYS('6', 5) TAGKEYS('7', 6) TAGKEYS('8', 7) TAGKEYS('9', 8)
 	FNKEYS(1) FNKEYS(2) FNKEYS(3) FNKEYS(4) FNKEYS(5) FNKEYS(6) FNKEYS(7) FNKEYS(8) FNKEYS(9)
+	{ MODKEY | SHIFT,   CH('r'),             reload,     { 0 } }, /* re-read ~/.config/vtmux.conf */
 	{ MODKEY | SHIFT,   CH('q'),             quit,       { 0 } },
 };

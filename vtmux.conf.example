@@ -1,0 +1,11 @@
+# Copy to ~/.config/vtmux.conf. Alt+Shift+r re-reads it. Lines starting with # are comments.
+set mfact 0.55        # master area size, 0.1 .. 0.9
+set nmaster 1         # terminals in the master area
+set topbar 1          # 0: bar at the bottom
+# set layout fr       # only if your terminal can't tell which key was pressed and detection guessed wrong
+# set term /bin/zsh   # what a new terminal runs (default: $SHELL)
+
+bind Alt+x spawn htop
+bind Alt+Shift+Enter spawn
+unbind Alt+Tab
+bind Alt+Escape view prev

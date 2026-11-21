@@ -11,10 +11,23 @@ Alt is the Mod key: Alt+c new, Alt+Shift+c close, Alt+j/k focus, Alt+h/l resize,
 Alt+Enter zoom, Alt+Tab previous tag, Alt+<number row> view tag, Alt+Shift+<number row> move to tag,
 Alt+F1..F9 / Alt+Shift+F1..F9 the same on any layout, Alt+Shift+q quit.
 
+## Configuration
+Defaults are in `config.h` (dwm style, rebuild after editing). On top of that, `~/.config/vtmux.conf` is read at
+start and again by Alt+Shift+r, no rebuild: see `vtmux.conf.example`.
+
+    set mfact 0.6          set nmaster 2        set topbar 0        set layout fr        set term /bin/zsh
+    bind Alt+x spawn htop  bind Alt+9 view 9    bind Alt+Shift+9 tag 9    unbind Alt+Enter
+
+Chords are `Mod+key` (Alt, Shift, Ctrl). A letter is the key that types it on your layout, a digit is the key in that
+position of the number row, so `Alt+1` is the same key on AZERTY. Actions: `spawn [cmd...]` (no quoting, 8 words
+max), `kill`, `focus +1|-1`, `nmaster +1|-1`, `mfact +0.05|-0.05`, `zoom`, `view N|prev|all`, `tag N|all`,
+`reload`, `quit`. A bad line is skipped and reported in the bar. `$VTMUX_CONF` points at another file.
+Note: `config.h` is copied from `config.def.h` once; delete it after updating to get new default keys (the reload key).
+
 ## Keyboard layouts
 Tag keys are bound by *position* (`PK('1')` = the number row's first key), so they work on any layout. Terminals
 that can't say which physical key was pressed (anything but kitty, foot, WezTerm, Ghostty, Alacritty) need to be
-told your layout: `layout = "fr"` in `config.h` or `VUI_LAYOUT=fr ./vtmux`. Layouts live in vaporUI
+told your layout (vaporUI also asks the OS: GNOME/X settings, vconsole.conf, Windows): `layout = "fr"` in `config.h` or `VUI_LAYOUT=fr ./vtmux`. Layouts live in vaporUI
 (`src/input.c`): add yours there. Letters are bound by what they type (`CH('q')`, like dwm's `XK_q`).
 
 Status: Linux only. Windows needs a ConPTY backend in vaporUI's terminal widget; vaporOS needs smaller
