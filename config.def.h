@@ -49,6 +49,7 @@ static const Key keys[] = {
 	TAGKEYS('1', 0) TAGKEYS('2', 1) TAGKEYS('3', 2) TAGKEYS('4', 3) TAGKEYS('5', 4)
 	TAGKEYS('6', 5) TAGKEYS('7', 6) TAGKEYS('8', 7) TAGKEYS('9', 8)
 	FNKEYS(1) FNKEYS(2) FNKEYS(3) FNKEYS(4) FNKEYS(5) FNKEYS(6) FNKEYS(7) FNKEYS(8) FNKEYS(9)
+	{ MODKEY,           CH('m'),             arrange,    { .i = -1 } }, /* monocle on/off */
 	{ MODKEY | SHIFT,   CH('r'),             reload,     { 0 } }, /* re-read ~/.config/vtmux.conf */
 	{ MODKEY | SHIFT,   CH('q'),             quit,       { 0 } },
 };

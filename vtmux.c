@@ -45,12 +45,14 @@ static void zoom(const Arg *a);
 static void view(const Arg *a);
 static void tag(const Arg *a);
 static void quit(const Arg *a);
+static void arrange(const Arg *a);
 static void reload(const Arg *a);
 
 #include "config.h"
 
 #define NTAGS ((int)(sizeof(tags) / sizeof(tags[0])))
 #define MAXC  16
+_Static_assert(NTAGS <= 9, "vtmux supports at most 9 tags");
 
 typedef struct {
     VuiTerminal *term;
@@ -63,8 +65,12 @@ typedef struct {
 static Client cl[MAXC]; // tile order, master first
 static int ncl, sel = -1;
 static unsigned int curview = 1, prevview = 1;
-static float curmfact = mfact;
-static int curnmaster = nmaster;
+
+// Per-tag settings (dwm's pertag): each tag keeps its own arrangement, master size and master count. Index 0 is
+// for views of several tags at once.
+enum { ARRANGE_TILE, ARRANGE_MONOCLE };
+typedef struct { int arrange; float mfact; int nmaster; } Pertag;
+static Pertag pertag[9 + 1];
 static unsigned int serial;
 static VuiNode *root, *screen, *bar;
 
@@ -81,6 +87,16 @@ static int nbinds;
 static char msg[96]; // shown in the bar until the next key
 static const char *const *term_argv = termcmd;
 static int top = topbar;
+
+static int ptidx(void)
+{
+    for (int i = 0; i < NTAGS; i++) {
+        if (curview == (1u << i)) return i + 1;
+    }
+    return 0;
+}
+
+#define PT (pertag[ptidx()])
 
 static int visible(int i) { return cl[i].tags & curview; }
 
@@ -105,7 +121,7 @@ static int count_visible(void)
 static void retile(void)
 {
     VuiTheme *th = vui_theme();
-    int n = count_visible(), m = curnmaster < n ? curnmaster : n;
+    int n = count_visible(), m = PT.nmaster < n ? PT.nmaster : n, mono = PT.arrange == ARRANGE_MONOCLE;
     VuiDiv *col[2] = { NULL, NULL };
 
     for (int i = 0; i < ncl; i++) {
@@ -123,13 +139,13 @@ static void retile(void)
     for (int k = 0, seen = 0; k < ncl; k++) {
         int c;
 
-        if (!visible(k)) continue;
+        if (!visible(k) || (mono && k != sel)) continue; // monocle: only the focused terminal is shown
 
-        c = seen++ >= m;
+        c = mono ? 0 : seen++ >= m;
         if (col[c] == NULL) {
             col[c] = div_create(VUI_DIR_COLUMN);
             col[c]->node.basis = 0;
-            col[c]->node.grow = c ? 1.0f - curmfact : (n > m ? curmfact : 1.0f);
+            col[c]->node.grow = mono ? 1.0f : c ? 1.0f - PT.mfact : (n > m ? PT.mfact : 1.0f);
             node_add(screen, &col[c]->node);
         }
 
@@ -254,16 +270,23 @@ static void tag(const Arg *a)
 
 static void setmfact(const Arg *a)
 {
-    curmfact += a->f;
-    if (curmfact < 0.1f) curmfact = 0.1f;
-    if (curmfact > 0.9f) curmfact = 0.9f;
+    PT.mfact += a->f;
+    if (PT.mfact < 0.1f) PT.mfact = 0.1f;
+    if (PT.mfact > 0.9f) PT.mfact = 0.9f;
     retile();
 }
 
 static void incnmaster(const Arg *a)
 {
-    curnmaster += a->i;
-    if (curnmaster < 1) curnmaster = 1;
+    PT.nmaster += a->i;
+    if (PT.nmaster < 1) PT.nmaster = 1;
+    retile();
+}
+
+// .i: ARRANGE_TILE / ARRANGE_MONOCLE, or -1 to flip between monocle and tile
+static void arrange(const Arg *a)
+{
+    PT.arrange = a->i < 0 ? (PT.arrange == ARRANGE_MONOCLE ? ARRANGE_TILE : ARRANGE_MONOCLE) : a->i;
     retile();
 }
 
@@ -299,7 +322,7 @@ static int command(const VuiKeyEvent *k)
 
 static const struct { const char *name; void (*func)(const Arg *); } actions[] = {
     { "spawn", spawn }, { "kill", killclient }, { "focus", focusstack }, { "nmaster", incnmaster },
-    { "mfact", setmfact }, { "zoom", zoom }, { "view", view }, { "tag", tag }, { "reload", reload }, { "quit", quit },
+    { "mfact", setmfact }, { "zoom", zoom }, { "view", view }, { "tag", tag }, { "reload", reload }, { "quit", quit }, { "arrange", arrange },
 };
 
 static const struct { const char *name; VuiKey key; } named_keys[] = {
@@ -420,8 +443,12 @@ static const char *conf_line(char *line)
 
     if (same_word(word[0], "set")) {
         if (n < 3) return "set needs a name and a value";
-        if (same_word(word[1], "mfact")) curmfact = (float)atof(word[2]);
-        else if (same_word(word[1], "nmaster")) curnmaster = atoi(word[2]);
+        if (same_word(word[1], "mfact")) { for (int i = 0; i <= NTAGS; i++) pertag[i].mfact = (float)atof(word[2]); }
+        else if (same_word(word[1], "nmaster")) { for (int i = 0; i <= NTAGS; i++) pertag[i].nmaster = atoi(word[2]); }
+        else if (same_word(word[1], "arrange")) {
+            if (!same_word(word[2], "tile") && !same_word(word[2], "monocle")) return "arrange is tile or monocle";
+            for (int i = 0; i <= NTAGS; i++) pertag[i].arrange = same_word(word[2], "monocle");
+        }
         else if (same_word(word[1], "topbar")) top = atoi(word[2]) != 0;
         else if (same_word(word[1], "layout")) { if (vui_set_layout(word[2]) != 0) return "unknown layout"; }
         else if (same_word(word[1], "term")) {
@@ -477,6 +504,11 @@ static const char *conf_line(char *line)
         } else if (b.k.func == setmfact) {
             if (n < 4) return "needs +0.05 or -0.05";
             b.k.arg.f = (float)atof(word[3]);
+        } else if (b.k.func == arrange) {
+            if (n < 4) return "needs tile, monocle or toggle";
+            b.k.arg.i = same_word(word[3], "tile") ? ARRANGE_TILE : same_word(word[3], "monocle") ? ARRANGE_MONOCLE
+                      : same_word(word[3], "toggle") ? -1 : -2;
+            if (b.k.arg.i == -2) return "needs tile, monocle or toggle";
         } else if (b.k.func == view || b.k.func == tag) {
             if (n < 4 || tag_arg(word[3], &mask) != 0) return "needs a tag 1-9, all or prev";
             if (b.k.func == tag && mask == 0) return "tag needs a tag 1-9 or all";
@@ -508,8 +540,7 @@ static void load_config(int announce)
 
     nbinds = 0;
     for (unsigned int i = 0; i < sizeof(keys) / sizeof(keys[0]) && nbinds < MAXBIND; i++) binds[nbinds++].k = keys[i];
-    curmfact = mfact;
-    curnmaster = nmaster;
+    for (int i = 0; i <= NTAGS; i++) pertag[i] = (Pertag){ ARRANGE_TILE, mfact, nmaster };
     top = topbar;
     term_argv = termcmd;
     vui_set_layout(layout);
@@ -562,7 +593,8 @@ static void bar_draw(VuiNode *node, VuiScreen *scr, void *userdata)
         x += vui_strn_width(s, strlen(s));
     }
 
-    snprintf(s, sizeof(s), " [%d]", curnmaster);
+    if (PT.arrange == ARRANGE_MONOCLE) snprintf(s, sizeof(s), " [M%d]", count_visible());
+    else snprintf(s, sizeof(s), " [%d]", PT.nmaster);
     scr_puts(scr, x + 1, node->rect.y, s, th->bar);
     if (msg[0] != '\0') scr_puts(scr, x + 1 + vui_strn_width(s, strlen(s)) + 1, node->rect.y, msg, th->bar);
 }
