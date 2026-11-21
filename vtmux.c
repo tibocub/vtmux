@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <vaporui.h>
 
@@ -46,6 +47,9 @@ static void view(const Arg *a);
 static void tag(const Arg *a);
 static void quit(const Arg *a);
 static void arrange(const Arg *a);
+static void rotatestack(const Arg *a);
+static void toggleview(const Arg *a);
+static void toggletag(const Arg *a);
 static void reload(const Arg *a);
 
 #include "config.h"
@@ -125,6 +129,7 @@ static void retile(void)
     VuiDiv *col[2] = { NULL, NULL };
 
     for (int i = 0; i < ncl; i++) {
+        cl[i].frame->title = cl[i].title; // the array is reordered (zoom, rotate, close): the title lives in the slot
         if (cl[i].frame->node.parent != NULL) node_remove(&cl[i].frame->node);
     }
     while (screen->child_count > 0) { // the old, now empty columns
@@ -248,14 +253,53 @@ static void zoom(const Arg *a)
     retile();
 }
 
+static unsigned long long now_ms(void)
+{
+    struct timespec t;
+
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (unsigned long long)t.tv_sec * 1000 + (unsigned long long)t.tv_nsec / 1000000;
+}
+
+static unsigned long long last_view_ms;
+static int combo_ms = comboms;
+
+static void setview(unsigned int v)
+{
+    if (v == 0 || v == curview) return;
+    prevview = curview;
+    curview = v;
+    retile();
+}
+
+// Alt+1 then Alt+2 within combo_ms views tags 1 and 2 together (dwm's combo patch, which uses "Mod still held": a
+// terminal can't see Mod released, so it is a short time window instead; `set combo 0` turns it off)
 static void view(const Arg *a)
 {
     unsigned int v = a->ui & ((1u << NTAGS) - 1); // 0: back to the previous tag
+    unsigned long long now = now_ms();
+    int single = v != 0 && (v & (v - 1)) == 0;
 
     if (v == 0) v = prevview;
-    if (v == curview) return;
-    prevview = curview;
-    curview = v;
+    else if (single && combo_ms > 0 && now - last_view_ms <= (unsigned long long)combo_ms && (curview & v) == 0) v |= curview;
+    last_view_ms = single ? now : 0;
+    setview(v);
+}
+
+// dwm's toggleview / toggletag: add or remove one tag from the view / from the focused terminal
+static void toggleview(const Arg *a)
+{
+    setview(curview ^ (a->ui & ((1u << NTAGS) - 1)));
+}
+
+static void toggletag(const Arg *a)
+{
+    unsigned int t;
+
+    if (sel < 0) return;
+    t = cl[sel].tags ^ (a->ui & ((1u << NTAGS) - 1));
+    if (t == 0) return;
+    cl[sel].tags = t;
     retile();
 }
 
@@ -280,6 +324,35 @@ static void incnmaster(const Arg *a)
 {
     PT.nmaster += a->i;
     if (PT.nmaster < 1) PT.nmaster = 1;
+    retile();
+}
+
+// dwm's rotatestack: the terminals after the master area move one place (+1 down, the last wraps to the top of the
+// stack, -1 up); the focused terminal moves with it.
+static void rotatestack(const Arg *a)
+{
+    int idx[MAXC], n = 0, first = PT.arrange == ARRANGE_MONOCLE ? 0 : PT.nmaster;
+    Client keep;
+    VuiTerminal *focus = sel >= 0 ? cl[sel].term : NULL;
+
+    for (int i = 0; i < ncl; i++) {
+        if (visible(i)) idx[n++] = i;
+    }
+    if (n - first < 2) return;
+
+    if (a->i > 0) {
+        keep = cl[idx[n - 1]];
+        for (int k = n - 1; k > first; k--) cl[idx[k]] = cl[idx[k - 1]];
+        cl[idx[first]] = keep;
+    } else {
+        keep = cl[idx[first]];
+        for (int k = first; k < n - 1; k++) cl[idx[k]] = cl[idx[k + 1]];
+        cl[idx[n - 1]] = keep;
+    }
+
+    for (int i = 0; i < ncl; i++) {
+        if (cl[i].term == focus) sel = i;
+    }
     retile();
 }
 
@@ -322,7 +395,7 @@ static int command(const VuiKeyEvent *k)
 
 static const struct { const char *name; void (*func)(const Arg *); } actions[] = {
     { "spawn", spawn }, { "kill", killclient }, { "focus", focusstack }, { "nmaster", incnmaster },
-    { "mfact", setmfact }, { "zoom", zoom }, { "view", view }, { "tag", tag }, { "reload", reload }, { "quit", quit }, { "arrange", arrange },
+    { "mfact", setmfact }, { "zoom", zoom }, { "view", view }, { "tag", tag }, { "reload", reload }, { "quit", quit }, { "arrange", arrange }, { "rotatestack", rotatestack }, { "toggleview", toggleview }, { "toggletag", toggletag },
 };
 
 static const struct { const char *name; VuiKey key; } named_keys[] = {
@@ -450,6 +523,7 @@ static const char *conf_line(char *line)
             for (int i = 0; i <= NTAGS; i++) pertag[i].arrange = same_word(word[2], "monocle");
         }
         else if (same_word(word[1], "topbar")) top = atoi(word[2]) != 0;
+        else if (same_word(word[1], "combo")) combo_ms = atoi(word[2]);
         else if (same_word(word[1], "layout")) { if (vui_set_layout(word[2]) != 0) return "unknown layout"; }
         else if (same_word(word[1], "term")) {
             static char text[256];
@@ -498,7 +572,7 @@ static const char *conf_line(char *line)
                 at += len + 1;
             }
             b.k.arg.v = w > 0 ? (const void *)b.argv : (const void *)termcmd;
-        } else if (b.k.func == focusstack || b.k.func == incnmaster) {
+        } else if (b.k.func == focusstack || b.k.func == incnmaster || b.k.func == rotatestack) {
             if (n < 4) return "needs +1 or -1";
             b.k.arg.i = atoi(word[3]);
         } else if (b.k.func == setmfact) {
@@ -509,9 +583,9 @@ static const char *conf_line(char *line)
             b.k.arg.i = same_word(word[3], "tile") ? ARRANGE_TILE : same_word(word[3], "monocle") ? ARRANGE_MONOCLE
                       : same_word(word[3], "toggle") ? -1 : -2;
             if (b.k.arg.i == -2) return "needs tile, monocle or toggle";
-        } else if (b.k.func == view || b.k.func == tag) {
+        } else if (b.k.func == view || b.k.func == tag || b.k.func == toggleview || b.k.func == toggletag) {
             if (n < 4 || tag_arg(word[3], &mask) != 0) return "needs a tag 1-9, all or prev";
-            if (b.k.func == tag && mask == 0) return "tag needs a tag 1-9 or all";
+            if (mask == 0 && b.k.func != view) return "needs a tag 1-9 or all";
             b.k.arg.ui = mask;
         }
 
@@ -542,6 +616,7 @@ static void load_config(int announce)
     for (unsigned int i = 0; i < sizeof(keys) / sizeof(keys[0]) && nbinds < MAXBIND; i++) binds[nbinds++].k = keys[i];
     for (int i = 0; i <= NTAGS; i++) pertag[i] = (Pertag){ ARRANGE_TILE, mfact, nmaster };
     top = topbar;
+    combo_ms = comboms;
     term_argv = termcmd;
     vui_set_layout(layout);
 

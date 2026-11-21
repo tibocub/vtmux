@@ -10,6 +10,7 @@ static const char *layout      = NULL; /* NULL: $VUI_LAYOUT, then the layout the
 static const int topbar        = 1;                       /* 0: bar at the bottom */
 static const char *tags[]      = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };
 static const float mfact       = 0.55f;                   /* master area size, 0.1 .. 0.9 */
+static const int comboms       = 300;                     /* Alt+1 then Alt+2 within this many ms views both tags; 0: off */
 static const int nmaster       = 1;                       /* terminals in the master area */
 static const VuiColor focuscolor = VUI_COLOR_BRIGHT_GREEN; /* frame of the focused terminal */
 
@@ -18,6 +19,7 @@ static const char *const termcmd[] = { NULL };
 
 #define MODKEY VUI_MOD_ALT
 #define SHIFT  VUI_MOD_SHIFT
+#define CTRL   VUI_MOD_CTRL
 #define CH(c)  VUI_KEY_CHAR, (c), 0
 #define PK(c)  VUI_KEY_CHAR, (c), 1
 #define FN(n)  (VUI_KEY_F1 + (n) - 1), 0, 0
@@ -25,7 +27,9 @@ static const char *const termcmd[] = { NULL };
 /* view tag N; tag the focused terminal with N */
 #define TAGKEYS(K, N) \
 	{ MODKEY,         PK(K), view, { .ui = 1u << (N) } }, \
-	{ MODKEY | SHIFT, PK(K), tag,  { .ui = 1u << (N) } },
+	{ MODKEY | SHIFT, PK(K), tag,  { .ui = 1u << (N) } }, \
+	{ MODKEY | CTRL,  PK(K), toggleview, { .ui = 1u << (N) } }, \
+	{ MODKEY | CTRL | SHIFT, PK(K), toggletag, { .ui = 1u << (N) } },
 
 /* Function keys work on any layout */
 #define FNKEYS(N) \
@@ -49,6 +53,8 @@ static const Key keys[] = {
 	TAGKEYS('1', 0) TAGKEYS('2', 1) TAGKEYS('3', 2) TAGKEYS('4', 3) TAGKEYS('5', 4)
 	TAGKEYS('6', 5) TAGKEYS('7', 6) TAGKEYS('8', 7) TAGKEYS('9', 8)
 	FNKEYS(1) FNKEYS(2) FNKEYS(3) FNKEYS(4) FNKEYS(5) FNKEYS(6) FNKEYS(7) FNKEYS(8) FNKEYS(9)
+	{ MODKEY | SHIFT,   CH('j'),             rotatestack, { .i = +1 } },
+	{ MODKEY | SHIFT,   CH('k'),             rotatestack, { .i = -1 } },
 	{ MODKEY,           CH('m'),             arrange,    { .i = -1 } }, /* monocle on/off */
 	{ MODKEY | SHIFT,   CH('r'),             reload,     { 0 } }, /* re-read ~/.config/vtmux.conf */
 	{ MODKEY | SHIFT,   CH('q'),             quit,       { 0 } },
