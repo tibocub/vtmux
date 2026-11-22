@@ -193,7 +193,7 @@ static void refresh_names(void)
             }
         }
 #endif
-        snprintf(cl[i].title, sizeof(cl[i].title), "%u - %s", cl[i].num, name[0] != '\0' ? name : cl[i].fallback);
+        snprintf(cl[i].title, sizeof(cl[i].title), "%u - %s ", cl[i].num, name[0] != '\0' ? name : cl[i].fallback);
     }
 }
 
