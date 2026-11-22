@@ -1,6 +1,7 @@
 # vtmux
-Vapor terminal multiplexer: a dwm-style tiling multiplexer (tags, master/stack layout) built on
-[vaporUI](../vaporUI)'s terminal widget. Linux today, Windows next; vaporOS is the goal.
+
+The Vapor Terminal Multiplexer: a cross-platform dwm-style tiling multiplexer (tags, master/stack layout) built on
+[vaporUI](../vaporUI)'s terminal widget.
 
     make                      # needs ../vaporUI, or make VAPORUI=/path/to/vaporUI
     ./vtmux
@@ -13,7 +14,9 @@ The bar is dwm's: dark with light text, a coloured background on the focused tag
 `config.h`). Tags and terminal tabs are clickable: left click views a tag, right click adds / removes it from the view,
 Alt+left moves the focused terminal to it, Alt+right adds / removes the tag on that terminal; a click on a tab focuses it.
 
+
 ## Configuration
+
 Defaults are compile-time, like dwm: `make` copies `config.def.h` to `config.h` (yours, never overwritten); edit it
 and rebuild. It lists every key, the tags, the master size and the terminal command. On top of that, `~/.config/vtmux.conf` is read at
 start and again by Alt+Shift+r, no rebuild: see `vtmux.conf.example`.
@@ -29,14 +32,20 @@ max), `kill`, `focus +1|-1`, `nmaster +1|-1`, `mfact +0.05|-0.05`, `arrange tile
 `reload`, `quit`. `tbind <chord> pageup|pagedown|lineup|linedown|top|bottom|copy|paste|none` sets keys of the focused terminal (scroll, copy, paste); unlisted keys keep the defaults: Shift+PageUp/Down, Shift+Home/End, Ctrl+Shift+C/V, mouse wheel, drag to select (Shift+drag when the program uses the mouse); `none` swallows a key. A bad line is skipped and reported in the bar. `$VTMUX_CONF` points at another file.
 Note: `config.h` is copied from `config.def.h` once; delete it after updating to get new default keys (the reload key).
 
+
 ## Keyboard layouts
+
 Tag keys are bound by *position* (`PK('1')` = the number row's first key), so they work on any layout. Terminals
 that can't say which physical key was pressed (anything but kitty, foot, WezTerm, Ghostty, Alacritty) need to be
 told your layout (vaporUI also asks the OS: GNOME/X settings, vconsole.conf, Windows): `layout = "fr"` in `config.h` or `VUI_LAYOUT=fr ./vtmux`. Layouts live in vaporUI
 (`src/input.c`): add yours there. Letters are bound by what they type (`CH('q')`, like dwm's `XK_q`).
 
-## Windows (first build, not yet run on a real Windows console)
-    make TARGET=WIN32 CC=x86_64-w64-mingw32-gcc      # cross-build vtmux.exe from Linux; plain `make` under MSYS2
+
+## Windows
+
+    make                                            # On Windows with MSYS2
+    make TARGET=WIN32 CC=x86_64-w64-mingw32-gcc     # cross-build vtmux.exe from Linux
+
 Needs Windows 10 1809+ (vaporUI's terminal widget uses ConPTY). New terminals run `%COMSPEC%` (cmd.exe); set another
 with `set term pwsh` (or `set term wsl`) in `%USERPROFILE%\.config\vtmux.conf`. The launcher lists the `.exe`, `.bat`,
 `.cmd` and `.com` files of `%PATH%`; text with a space runs through `cmd /c`; the background run is detached with no window.
@@ -47,7 +56,7 @@ Windows Terminal takes some keys before vtmux sees them: Alt+Enter (zoom), Alt+C
 `bind Alt+z zoom`, `bind Alt+Shift+t toggleview 1`; conhost itself only takes Alt+Enter. Windows has no clipboard read in
 vaporUI: paste with the host terminal's own paste.
 
-Status: Linux (desktop terminals and the console) works; Windows builds but is untested; vaporOS needs smaller
+Status: Linux (desktop terminals and TTYs) works; Windows works; vaporOS needs smaller
 terminals and one libvterm (see vaporUI docs/small-targets.md).
 
 ## TODO
