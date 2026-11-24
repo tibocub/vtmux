@@ -22,7 +22,9 @@ endif
 SRCS := $(wildcard $(V)/src/*.c $(V)/src/widgets/*.c) $(PLATFORM) $(V)/src/ext/terminal.c $(V)/src/ext/termsel.c \
         $(wildcard $(V)/third_party/libvterm/src/*.c)
 
-$(EXE): vtmux.c config.h $(SRCS)
+HDRS := $(wildcard $(V)/include/*.h $(V)/src/*.h $(V)/src/platform/*.h $(V)/src/widgets/*.h $(V)/src/ext/*.h)
+
+$(EXE): vtmux.c config.h $(SRCS) $(HDRS)
 	$(CC) $(CFLAGS) -DVUI_TERMINAL -I. -I$(V)/include -I$(V)/third_party/libvterm/include vtmux.c $(SRCS) -o $@
 
 config.h:
