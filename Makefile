@@ -1,6 +1,7 @@
 # vtmux: needs a vaporUI checkout (default: next to this repo) and gcc. POSIX only for now.
 #   make [VAPORUI=/path/to/vaporUI]
 # config.h is your copy of config.def.h, never overwritten.
+#   make install [PREFIX=/usr/local] [DESTDIR=]   builds, then copies vtmux to $(PREFIX)/bin (make uninstall removes it)
 #   make TARGET=WIN32 CC=x86_64-w64-mingw32-gcc      cross-build vtmux.exe from Linux (or plain `make` under MSYS2)
 VAPORUI ?= ../vaporUI
 CC      ?= gcc
@@ -10,6 +11,9 @@ ifeq ($(OS),Windows_NT)
 TARGET ?= WIN32
 endif
 TARGET ?= POSIX
+
+# dwm's convention; under MSYS2 a MinGW shell's own prefix (/mingw64...) is on PATH, /usr/local usually isn't
+PREFIX ?= $(if $(MINGW_PREFIX),$(MINGW_PREFIX),/usr/local)
 
 ifeq ($(TARGET),WIN32)
 EXE      := vtmux.exe
@@ -32,4 +36,13 @@ config.h:
 
 clean:
 	rm -f vtmux vtmux.exe
-.PHONY: clean
+
+install: $(EXE)
+	mkdir -p $(DESTDIR)$(PREFIX)/bin
+	cp -f $(EXE) $(DESTDIR)$(PREFIX)/bin
+	chmod 755 $(DESTDIR)$(PREFIX)/bin/$(EXE)
+
+uninstall:
+	rm -f $(DESTDIR)$(PREFIX)/bin/$(EXE)
+
+.PHONY: clean install uninstall

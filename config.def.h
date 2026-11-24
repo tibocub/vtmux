@@ -62,7 +62,8 @@ static const Key keys[] = {
 	{ MODKEY | SHIFT,   CH('k'),             rotatestack, { .i = -1 } },
 	{ MODKEY,           CH('p'),             launch,     { .i = 0 } }, /* run a program in a new terminal */
 	{ MODKEY | SHIFT,   CH('p'),             launch,     { .i = 1 } }, /* run it in the background */
-	{ MODKEY,           CH('m'),             arrange,    { .i = -1 } }, /* monocle on/off */
+	{ MODKEY,           CH('t'),             arrange,    { .i = 0 } },  /* layout 0: dynamic tiling */
+	{ MODKEY,           CH('m'),             arrange,    { .i = 1 } }, /* layout 1: monocle */
 	{ MODKEY | SHIFT,   CH('r'),             reload,     { 0 } }, /* re-read ~/.config/vtmux.conf */
 	{ MODKEY | SHIFT,   CH('q'),             quit,       { 0 } },
 };

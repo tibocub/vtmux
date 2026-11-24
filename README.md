@@ -4,10 +4,11 @@ The Vapor Terminal Multiplexer: a cross-platform dwm-style tiling multiplexer (t
 [vaporUI](../vaporUI)'s terminal widget.
 
     make                      # needs ../vaporUI, or make VAPORUI=/path/to/vaporUI
+    sudo make install         # copies vtmux to /usr/local/bin (PREFIX=, DESTDIR= like dwm; make uninstall removes it)
     ./vtmux
 
 Alt is the Mod key: Alt+c new, Alt+Shift+c close, Alt+j/k focus, Alt+h/l resize, Alt+i/d master count,
-Alt+Shift+j/k rotate all terminals in view (master included), Alt+p launcher (run a program in a new terminal), Alt+Shift+p launcher (run it in the background), Alt+m monocle on/off, Alt+Ctrl+<number row> toggle a tag in the view (+Shift: on the terminal), Alt+Enter zoom, Alt+Tab previous tag, Alt+<number row> view tag, Alt+Shift+<number row> move to tag,
+Alt+Shift+j/k rotate all terminals in view (master included), Alt+p launcher (run a program in a new terminal), Alt+Shift+p launcher (run it in the background), Alt+t tiled layout, Alt+m monocle, Alt+Ctrl+<number row> toggle a tag in the view (+Shift: on the terminal), Alt+Enter zoom, Alt+Tab previous tag, Alt+<number row> view tag, Alt+Shift+<number row> move to tag,
 Alt+F1..F9 / Alt+Shift+F1..F9 the same on any layout, Alt+Shift+r reload the config, Alt+Shift+q quit.
 
 The bar is dwm's: dark with light text, a coloured background on the focused tag(s) and terminal (colours in
@@ -24,7 +25,7 @@ start and again by Alt+Shift+r, no rebuild: see `vtmux.conf.example`.
     set mfact 0.6          set nmaster 2        set topbar 0        set arrange monocle        set combo 80        set layout fr        set term /bin/zsh
     bind Alt+x spawn htop  bind Alt+9 view 9    bind Alt+Shift+9 tag 9    unbind Alt+Enter
 
-`set mfact`, `nmaster` and `arrange` give every tag the same start value; Alt+m, Alt+h/l and Alt+i/d then change only the tag you are on.
+`set mfact`, `nmaster` and `arrange` give every tag the same start value; Alt+t, Alt+m, Alt+h/l and Alt+i/d then change only the tag you are on.
 
 Chords are `Mod+key` (Alt, Shift, Ctrl). A letter is the key that types it on your layout, a digit is the key in that
 position of the number row, so `Alt+1` is the same key on AZERTY. Actions: `spawn [cmd...]` (no quoting, 8 words
@@ -44,6 +45,7 @@ told your layout (vaporUI also asks the OS: GNOME/X settings, vconsole.conf, Win
 ## Windows
 
     make                                            # On Windows with MSYS2
+    make install                                    # to the MinGW prefix's bin (PREFIX= to change), so vtmux is on the PATH of that shell
     make TARGET=WIN32 CC=x86_64-w64-mingw32-gcc     # cross-build vtmux.exe from Linux
 
 Needs Windows 10 1809+ (vaporUI's terminal widget uses ConPTY). New terminals run `%COMSPEC%` (cmd.exe); set another
@@ -60,7 +62,7 @@ Status: Linux (desktop terminals and TTYs) works; Windows works; vaporOS needs s
 terminals and one libvterm (see vaporUI docs/small-targets.md).
 
 ## TODO
-- [x] alt-m monocle mode (full screen terminals, rotate with alt-j/alt-k)
+- [x] alt-t tile / alt-m monocle (dwm-style: each key selects its layout, `arrange tile|monocle|toggle` in the config) (full screen terminals, rotate with alt-j/alt-k)
 - [x] combo: like dwm's patch, press a tag key while the previous tag key is still held (Alt+1, then 2 with 1 still down) to view both; any key release ends it (Linux and Windows consoles report releases). Terminal windows can't see releases, so there a second tag key within 80 ms (`set combo <ms>`, 0 = off) counts as held. `toggleview` (Alt+Ctrl+number) is the other way
 - [x] pertag: each tag keeps its own arrangement (tile or monocle), master size and master count (a view of several tags shares one more set). Not done: a grid arrangement
 - [x] rotatestack: Alt+Shift+j/k cycles every terminal in view, master and stack, one place; the focused terminal moves with its place
