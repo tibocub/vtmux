@@ -21,7 +21,7 @@ Defaults are compile-time, like dwm: `make` copies `config.def.h` to `config.h` 
 and rebuild. It lists every key, the tags, the master size and the terminal command. On top of that, `~/.config/vtmux.conf` is read at
 start and again by Alt+Shift+r, no rebuild: see `vtmux.conf.example`.
 
-    set mfact 0.6          set nmaster 2        set topbar 0        set arrange monocle        set combo 300        set layout fr        set term /bin/zsh
+    set mfact 0.6          set nmaster 2        set topbar 0        set arrange monocle        set combo 80        set layout fr        set term /bin/zsh
     bind Alt+x spawn htop  bind Alt+9 view 9    bind Alt+Shift+9 tag 9    unbind Alt+Enter
 
 `set mfact`, `nmaster` and `arrange` give every tag the same start value; Alt+m, Alt+h/l and Alt+i/d then change only the tag you are on.
@@ -61,7 +61,7 @@ terminals and one libvterm (see vaporUI docs/small-targets.md).
 
 ## TODO
 - [x] alt-m monocle mode (full screen terminals, rotate with alt-j/alt-k)
-- [x] combo: like dwm's patch, press a tag key while the previous tag key is still held (Alt+1, then 2 with 1 still down) to view both; any key release ends it (Linux and Windows consoles report releases). Terminal windows can't see releases, so there a second tag key within 300 ms (`set combo <ms>`, 0 = off) counts as held. `toggleview` (Alt+Ctrl+number) is the other way
+- [x] combo: like dwm's patch, press a tag key while the previous tag key is still held (Alt+1, then 2 with 1 still down) to view both; any key release ends it (Linux and Windows consoles report releases). Terminal windows can't see releases, so there a second tag key within 80 ms (`set combo <ms>`, 0 = off) counts as held. `toggleview` (Alt+Ctrl+number) is the other way
 - [x] pertag: each tag keeps its own arrangement (tile or monocle), master size and master count (a view of several tags shares one more set). Not done: a grid arrangement
 - [x] rotatestack: Alt+Shift+j/k cycles every terminal in view, master and stack, one place; the focused terminal moves with its place
 - [x] launcher (Alt+p / Alt+Shift+p): type to narrow the programs on $PATH (prefix matches first, then substring), Up/Down, Enter runs it in a new terminal or, with Alt+Shift+p, detached in the background; text with a space is run as typed (`sh -c`). Not done: fuzzy matching, scripts outside $PATH, history

@@ -10,7 +10,7 @@ static const char *layout      = NULL; /* NULL: $VUI_LAYOUT, then the layout the
 static const int topbar        = 1;                       /* 0: bar at the bottom */
 static const char *tags[]      = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };
 static const float mfact       = 0.55f;                   /* master area size, 0.1 .. 0.9 */
-static const int comboms       = 300;                     /* Alt+1 then Alt+2 within this many ms views both tags; 0: off */
+static const int comboms       = 80;                      /* Alt+1 then Alt+2 within this many ms views both tags; 0: off */
 static const int nmaster       = 1;                       /* terminals in the master area */
 /* the bar, like dwm's: dark with light text, and a coloured background for the focused tag(s) and terminal */
 static const VuiColor barfg    = VUI_COLOR_WHITE;
